@@ -24,7 +24,7 @@ pyotp==2.9.0
 webauthn==2.7.1
 cryptography==47.0.0
 requests==2.34.0
-urllib3==2.7.0
+urllib3==2.8.0
 # First-run: the setup link is also rendered as a terminal QR (pure python).
 qrcode==8.2
 # Cold-archive encryption (apps/octo/retention/archive_crypto.py): the
