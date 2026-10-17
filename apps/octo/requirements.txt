@@ -22,7 +22,7 @@ psutil==7.2.2
 # Pins match the legacy host's production venv as of 2026-09-19.
 pyotp==2.9.0
 webauthn==2.7.1
-cryptography==47.0.0
+cryptography==50.0.0
 requests==2.34.0
 urllib3==2.7.0
 # First-run: the setup link is also rendered as a terminal QR (pure python).
