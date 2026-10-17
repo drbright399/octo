@@ -1,0 +1,15 @@
+{
+  "_comment": "Production-build typecheck config. Extends the root tsconfig (which includes tests for the IDE + Vitest) and EXCLUDES tests + vitest.config so `tsc -b` for `npm run build` doesn't fail on test-only type issues. Vitest still runs against the root tsconfig.json and its own type-check via the test framework.",
+  "extends": "./tsconfig.json",
+  "include": [
+    "src",
+    "../widgets/components",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "tests",
+    "vitest.config.ts",
+    "node_modules",
+    "dist"
+  ]
+}

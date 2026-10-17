@@ -1,0 +1,889 @@
+/* Web fonts — Inter (body), JetBrains Mono (data). Extra families available
+ * via the Theme v2 Appearance panel: IBM Plex Sans/Mono, Geist/Geist Mono.
+ * Webfont swap is driven by the --font-sans / --font-mono CSS variables
+ * set per data-font="..." block further down.
+ *
+ * MUST come before @tailwind directives — CSS spec requires @import to
+ * precede any other rules. Browsers silently ignore @import after other
+ * rules, which means a stack like `"Inter", ui-sans-serif, ...` falls
+ * straight through to the system family with no visible difference
+ * between font picker options. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens — dark (default). Mirrors the legacy dashboard's public/css/style.css.
+ * Components reference these via Tailwind utilities (bg-bg-deep, text-accent, etc.). */
+:root,
+:root[data-theme="dark"] {
+  --bg-deep:        #0a0414;
+  --bg-surface:     rgba(20, 12, 38, 0.78);
+  --bg-card:        rgba(28, 18, 52, 0.88);
+  --bg-card-hover:  rgba(48, 32, 86, 0.9);
+  --bg-elevated:    rgba(34, 22, 64, 0.95);
+  --bg-input:       rgba(16, 10, 32, 0.6);
+
+  --border:         rgba(167, 139, 250, 0.14);
+  --border-bright:  rgba(167, 139, 250, 0.28);
+
+  --text-primary:   #ece9f5;
+  --text-secondary: #a5a0bf;
+  --text-dim:       #6b6589;
+
+  --accent:         #a78bfa;
+  --text-on-accent: #0a0414;  /* Text rendered ON TOP of bg-accent (hover sweep, selected toggles).
+                                  Always the deep ink — see light-mode override below for the reason. */
+  --accent-strong:  #c084fc;
+  --accent-cta:     #7c3aed;
+  --accent-soft:    rgba(167, 139, 250, 0.12);
+  --accent-glow:    rgba(167, 139, 250, 0.25);
+
+  --critical:       #ef4444;
+  --high:           #f97316;
+  --medium:         #eab308;
+  --low:            #64748b;
+  --info:           #94a3b8;
+  --success:        #22c55e;
+
+  /* Tier Black (Fleet): a near-black pin inside a bright ring — the ring
+   * and the glyph carry it on a dark map; the shape (an octagon) carries it
+   * without colour. Curated, never user-picked. */
+  --fleet-threat:      #08030f;
+  --fleet-threat-ring: #ff3b5c;
+  --fleet-threat-text: #ffe4e9;
+
+  /* Network-bg canvas gradient — read by NetworkBg component */
+  --bg-gradient-1:  #0a0414;
+  --bg-gradient-2:  #1a0f3a;
+
+  /* Tinted odds and ends that used to be hard-coded violet. Tokens so the
+   * background schemes below can neutralise them. `--scrim-rgb` is an
+   * "R, G, B" triplet for rgba(var(--scrim-rgb), a) overlays. */
+  --scrim-rgb:             10, 4, 20;
+  --scrollbar-thumb:       rgba(167, 139, 250, 0.18);
+  --scrollbar-thumb-hover: rgba(167, 139, 250, 0.32);
+  --skeleton-sheen:        rgba(167, 139, 250, 0.10);
+
+  color-scheme: dark;
+}
+
+/* Light theme — warm eggshell, matches athena-console v2 calibration. */
+:root[data-theme="light"] {
+  --bg-deep:        #f5f1e8;
+  --bg-surface:     rgba(253, 250, 243, 0.94);
+  --bg-card:        rgba(255, 252, 245, 0.96);
+  --bg-card-hover:  rgba(245, 238, 224, 0.95);
+  --bg-elevated:    rgba(255, 253, 248, 0.98);
+  --bg-input:       rgba(250, 245, 233, 0.92);
+
+  --border:         rgba(76, 29, 149, 0.14);
+  --border-bright:  rgba(76, 29, 149, 0.26);
+
+  --text-primary:   #2a1d4a;
+  --text-secondary: #5e4d80;
+  --text-dim:       #8a7ea8;
+
+  --accent:         #7c3aed;
+  --text-on-accent: #0a0414;  /* SAME deep ink as dark mode. NOT --bg-deep (which is cream in light) —
+                                  cream on violet has only ~2.5:1 contrast and washes out. Keep
+                                  text-on-accent dark in both modes; the accent stays mid-saturation. */
+  --accent-strong:  #6d28d9;
+  --accent-cta:     #6d28d9;
+  --accent-soft:    rgba(124, 58, 237, 0.10);
+  --accent-glow:    rgba(124, 58, 237, 0.20);
+
+  --critical:       #dc2626;
+  --high:           #ea580c;
+  --medium:         #ca8a04;
+  --low:            #475569;
+  --info:           #475569;
+  --success:        #16a34a;
+
+  --fleet-threat:      #120a1c;
+  --fleet-threat-ring: #e11d48;
+  --fleet-threat-text: #fff1f2;
+
+  /* Network-bg canvas gradient — read by NetworkBg component */
+  --bg-gradient-1:  #f5f1e8;
+  --bg-gradient-2:  #e8e0cf;
+
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+ * Background schemes (Settings → Appearance → Background). Independent of
+ * the accent bundle. Curated enum — `data-scheme` on <html>, no free-form
+ * colour. DARK MODE ONLY: the `:not([data-theme="light"])` guard means a
+ * stored scheme is inert while the light theme is active.
+ *
+ *   twilight    (default, NO attribute) — the violet-tinted block above.
+ *   graphite    neutral dark: true greys (r = g = b), no purple tint.
+ *   ultra-black OLED: #000 page, near-black surfaces.
+ *
+ * Schemes own the SURFACE side only: backgrounds, borders, text ramp, the
+ * canvas gradient and the helper tokens. They never touch --accent* or
+ * the severity colours — those stay curated per bundle. Borders go
+ * neutral (white-alpha) instead of accent-tinted, and a little stronger
+ * than the baseline, so panel edges + elevation still read on black.
+ *
+ * Specificity (0,3,0) beats the bundle blocks' (0,2,0), which is what
+ * lets the scheme's neutral --border win over a bundle's tinted one.
+ *
+ * Contrast: see tests/appearance-contrast.test.ts — it parses THIS file
+ * and asserts WCAG AA (4.5:1) for the text ramp and for every bundle's
+ * accent on every surface of both schemes. Touch a value → run it.
+ * --------------------------------------------------------------------------- */
+:root[data-scheme="graphite"]:not([data-theme="light"]) {
+  --bg-deep:        #0c0c0c;
+  --bg-surface:     rgba(19, 19, 19, 0.78);
+  --bg-card:        rgba(25, 25, 25, 0.88);
+  --bg-card-hover:  rgba(34, 34, 34, 0.9);
+  --bg-elevated:    rgba(30, 30, 30, 0.95);
+  --bg-input:       rgba(15, 15, 15, 0.6);
+
+  --border:         rgba(255, 255, 255, 0.10);
+  --border-bright:  rgba(255, 255, 255, 0.22);
+
+  --text-primary:   #ededed;
+  --text-secondary: #b4b4b4;
+  --text-dim:       #8e8e8e;
+  --text-on-accent: #0c0c0c;
+
+  --bg-gradient-1:  #0c0c0c;
+  --bg-gradient-2:  #161616;
+
+  --scrim-rgb:             12, 12, 12;
+  --scrollbar-thumb:       rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.30);
+  --skeleton-sheen:        rgba(255, 255, 255, 0.07);
+}
+
+:root[data-scheme="ultra-black"]:not([data-theme="light"]) {
+  --bg-deep:        #000000;
+  --bg-surface:     rgba(10, 10, 10, 0.82);
+  --bg-card:        rgba(17, 17, 17, 0.9);
+  --bg-card-hover:  rgba(34, 34, 34, 0.92);
+  --bg-elevated:    rgba(24, 24, 24, 0.96);
+  --bg-input:       rgba(5, 5, 5, 0.7);
+
+  --border:         rgba(255, 255, 255, 0.13);
+  --border-bright:  rgba(255, 255, 255, 0.26);
+
+  --text-primary:   #f2f2f2;
+  --text-secondary: #b0b0b0;
+  --text-dim:       #888888;
+  --text-on-accent: #000000;
+
+  /* Flat black behind the mesh — a gradient would lift the page off #000. */
+  --bg-gradient-1:  #000000;
+  --bg-gradient-2:  #000000;
+
+  /* On a #000 page the Black pin's fill lifts a little (neutral, like every
+   * colour of this scheme); its bright ring carries it. */
+  --fleet-threat:      #161616;
+
+  --scrim-rgb:             0, 0, 0;
+  --scrollbar-thumb:       rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
+  --skeleton-sheen:        rgba(255, 255, 255, 0.06);
+}
+
+/* ---------------------------------------------------------------------------
+ * MSP bundle accent palettes (MSP branding + per-user themes). Curated
+ * set — no free hex pickers.
+ * Apply via <html data-bundle="..."> at deploy time. Skip = Athena violet
+ * default above.
+ * --------------------------------------------------------------------------- */
+
+/* Midas Touch — gold #FFC600. (Formerly keyed by a company brand name; the
+ * old id is alias-mapped to "midas" in src/lib/appearance.ts, so there is
+ * deliberately no selector for it here.) */
+:root[data-bundle="midas"] {
+  --accent:        #FFC600;
+  --accent-strong: #ffd84a;
+  --accent-cta:    #d4a500;
+  --accent-soft:   rgba(255, 198, 0, 0.12);
+  --accent-glow:   rgba(255, 198, 0, 0.28);
+  --border:        rgba(255, 198, 0, 0.16);
+  --border-bright: rgba(255, 198, 0, 0.32);
+}
+:root[data-bundle="indigo"]  { --accent:#818cf8; --accent-strong:#a5b4fc; --accent-cta:#4f46e5;
+  --accent-soft:rgba(129,140,248,0.12); --accent-glow:rgba(129,140,248,0.28);
+  --border:rgba(129,140,248,0.16); --border-bright:rgba(129,140,248,0.32); }
+:root[data-bundle="cyan"]    { --accent:#22d3ee; --accent-strong:#67e8f9; --accent-cta:#0891b2;
+  --accent-soft:rgba(34,211,238,0.12); --accent-glow:rgba(34,211,238,0.28);
+  --border:rgba(34,211,238,0.16); --border-bright:rgba(34,211,238,0.32); }
+:root[data-bundle="sky"]     { --accent:#38bdf8; --accent-strong:#7dd3fc; --accent-cta:#0284c7;
+  --accent-soft:rgba(56,189,248,0.12); --accent-glow:rgba(56,189,248,0.28);
+  --border:rgba(56,189,248,0.16); --border-bright:rgba(56,189,248,0.32); }
+:root[data-bundle="rose"]    { --accent:#fb7185; --accent-strong:#fda4af; --accent-cta:#e11d48;
+  --accent-soft:rgba(251,113,133,0.12); --accent-glow:rgba(251,113,133,0.28);
+  --border:rgba(251,113,133,0.16); --border-bright:rgba(251,113,133,0.32); }
+:root[data-bundle="emerald"] { --accent:#34d399; --accent-strong:#6ee7b7; --accent-cta:#059669;
+  --accent-soft:rgba(52,211,153,0.12); --accent-glow:rgba(52,211,153,0.28);
+  --border:rgba(52,211,153,0.16); --border-bright:rgba(52,211,153,0.32); }
+
+/* ---------------------------------------------------------------------------
+ * Type + spacing + radius tokens. Centralized so the Appearance panel can
+ * drive font / corner-radius swaps via data attributes on <html>.
+ * --------------------------------------------------------------------------- */
+
+:root {
+  /* Font families — driven by data-font="..." below. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Type scale (rem) — Tailwind defaults used in the app, named for reference. */
+  --fs-10: 0.625rem;   /* 10px — section markers, status strip */
+  --fs-11: 0.6875rem;  /* 11px — uppercase eyebrow, sidebar nav */
+  --fs-12: 0.75rem;    /* 12px — secondary body, table cells */
+  --fs-13: 0.8125rem;  /* 13px — DEFAULT body */
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-24: 1.5rem;
+
+  --tracking-tight:   -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.05em;
+  --tracking-wider:   0.1em;
+  --tracking-loudest: 0.2em;  /* section markers `·· 04 ··` */
+
+  --leading-tight: 1.25;
+  --leading-body:  1.5;
+
+  /* Radii — sharp-leaning. data-corners="..." swaps these. Pills forbidden. */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+}
+
+/* Corner-radius bundles (Theme v2 Appearance — Sharp / Default / Friendly) */
+:root[data-corners="terminal"] { --r-sm: 0px; --r-md: 2px;  --r-lg: 4px;  }
+:root[data-corners="default"]  { --r-sm: 4px; --r-md: 8px;  --r-lg: 14px; }
+:root[data-corners="friendly"] { --r-sm: 6px; --r-md: 12px; --r-lg: 20px; }
+
+/* Font-family bundles (Theme v2 Appearance) */
+:root[data-font="inter"]   { --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+                              --font-mono: "JetBrains Mono", ui-monospace, monospace; }
+:root[data-font="ibm-plex"] { --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+                              --font-mono: "IBM Plex Mono", ui-monospace, monospace; }
+:root[data-font="geist"]   { --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+                              --font-mono: "Geist Mono", ui-monospace, monospace; }
+:root[data-font="system"]  { --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+                              --font-mono: ui-monospace, "SF Mono", Menlo, monospace; }
+
+/* Belt-and-braces: explicitly cascade --font-sans / --font-mono into
+   the actual font-family declarations so the picker can never be
+   shadowed by a Tailwind utility class (e.g. .font-mono compiles to
+   `font-family: var(--font-mono)` already, but if a stale config
+   was emitted that pinned a literal stack the picker would silently
+   no-op). These selectors have higher specificity than the .font-*
+   utilities and survive Tailwind's cascade order. */
+html, body { font-family: var(--font-sans); }
+.font-sans { font-family: var(--font-sans); }
+.font-mono, code, pre, kbd, samp { font-family: var(--font-mono); }
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Nier-inspired hover sweep — quick horizontal fill that inverts the
+ * highlighted element's colors. Gated behind `data-motion="nier"` on
+ * <html>; future Theme v2 Appearance panel toggles this between
+ * standard / nier-sweep / reduced (accessibility).
+ *
+ * Apply by adding the `nav-sweep` class to interactive elements.
+ * Pairs with sidebar nav items + dropdown menu items + filter chips
+ * — but NOT widget content (visual noise).
+ * --------------------------------------------------------------------------- */
+
+[data-motion="nier"] .nav-sweep {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Direct children sit above both pseudo-elements (sweep + stripe). */
+[data-motion="nier"] .nav-sweep > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* The sweep itself uses ::before so it doesn't collide with .row-stripe's
+ * ::after — both classes are commonly applied to the same row. */
+[data-motion="nier"] .nav-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 180ms cubic-bezier(0.7, 0, 0.3, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+[data-motion="nier"] .nav-sweep:hover::before,
+[data-motion="nier"] .nav-sweep:focus-visible::before {
+  transform: scaleX(1);
+}
+
+/* Text inverts to bg-deep on hover/focus so the contrast against the
+ * now-accent background reads. We force inheritance on most
+ * descendants but EXCLUDE buttons / links + their children — those
+ * have their own background + styling and shouldn't get sucked into
+ * the inversion (or their text disappears against their own bg). */
+[data-motion="nier"] .nav-sweep:hover,
+[data-motion="nier"] .nav-sweep:focus-visible {
+  color: var(--text-on-accent);
+}
+[data-motion="nier"] .nav-sweep:hover *:not(button, button *, a, a *, input, select, textarea),
+[data-motion="nier"] .nav-sweep:focus-visible *:not(button, button *, a, a *, input, select, textarea) {
+  color: inherit;
+}
+
+/* Respect prefers-reduced-motion at the OS level — collapses the
+ * transition to instant. */
+@media (prefers-reduced-motion: reduce) {
+  [data-motion="nier"] .nav-sweep::before {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Severity stripe — small vertical line just inside the left edge of a
+ * row, tinted by severity. Persistent (not hover-only) — helps the eye
+ * sweep down a long list and lock onto criticals first. Pairs cleanly
+ * with .nav-sweep on the same element.
+ *
+ * Apply via `<tr class="row-stripe" data-sev="high">…</tr>` (or any
+ * block element). Rows that use this need at least pl-4 / pl-5 on
+ * their first cell so the stripe doesn't overlap the text.
+ * --------------------------------------------------------------------------- */
+
+.row-stripe {
+  position: relative;
+}
+.row-stripe::after {
+  content: "";
+  position: absolute;
+  left: 32px;     /* moved further in so the P# label sits to the left */
+  top: 0;
+  bottom: 0;
+  width: 3px;     /* slightly thicker than v1 */
+  background: var(--stripe-color, var(--text-dim));
+  pointer-events: none;
+  z-index: 1;     /* above the sweep ::before, below children */
+}
+
+.row-stripe[data-sev="critical"] { --stripe-color: var(--critical); }
+.row-stripe[data-sev="high"]     { --stripe-color: var(--high); }
+.row-stripe[data-sev="medium"]   { --stripe-color: var(--medium); }
+.row-stripe[data-sev="low"]      { --stripe-color: var(--low); }
+.row-stripe[data-sev="info"]     { --stripe-color: var(--info); }
+
+/* Critical pulses to draw the eye — gentle, not strobe-y. */
+[data-motion="nier"] .row-stripe[data-sev="critical"]::after {
+  animation: stripe-pulse-critical 1.6s ease-in-out infinite;
+}
+@keyframes stripe-pulse-critical {
+  0%, 100% { opacity: 0.7; box-shadow: none; }
+  50% { opacity: 1; box-shadow: 0 0 6px var(--critical); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-motion="nier"] .row-stripe[data-sev="critical"]::after {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * WidgetState — loading / empty / degraded / error catalog for widgets.
+ * Ported from Design's kit 2026-05-13. Production component:
+ * src/components/widget-state.tsx. See JSDoc there for usage rules.
+ * --------------------------------------------------------------------------- */
+
+/* Screen-reader-only utility — reused by other components too. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* Loading — skeleton rows with a tinted shimmer; never a centered spinner. */
+.state-loading {
+  display: flex; flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+.skel-row {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 0%,
+    var(--skeleton-sheen) 40%,
+    var(--bg-card) 80%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--r-sm);
+}
+@keyframes skel-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-row { animation: none; background: var(--bg-card); }
+}
+
+/* Empty — centered glyph + sentence. */
+.state-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  height: 100%; min-height: 80px;
+  padding: 16px;
+  color: var(--text-dim);
+}
+.state-empty__glyph {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 32px;
+  line-height: 1;
+  color: var(--text-dim);
+  opacity: 0.5;
+  margin-bottom: 10px;
+}
+.state-empty__title {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.state-empty__hint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-dim);
+  max-width: 280px;
+}
+
+/* Degraded — small amber strip above content; content still renders. */
+.state-degraded {
+  display: flex; align-items: center; gap: 8px;
+  margin: -4px -4px 10px;
+  padding: 6px 10px;
+  background: rgba(234, 179, 8, 0.10);
+  border: 1px solid rgba(234, 179, 8, 0.30);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--medium);
+}
+.state-degraded__glyph { color: var(--medium); animation: dot-pulse 2s infinite; }
+.state-degraded__msg strong { font-weight: 600; }
+.state-degraded__detail {
+  margin-left: auto; color: var(--text-dim);
+  text-transform: none; letter-spacing: 0;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+ * VendorLink — "open in vendor UI" affordance for events.
+ * Production component: src/components/vendor-link.tsx
+ * --------------------------------------------------------------------------- */
+
+.vendor-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: color 120ms, background 120ms, border-color 120ms;
+  white-space: nowrap;
+}
+.vendor-link:hover { color: var(--accent); }
+.vendor-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.vendor-link--sm {
+  position: relative;
+  width: 22px; height: 22px;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  line-height: 1;
+}
+.vendor-link--sm:hover { background: var(--accent-soft); }
+.vendor-link__count {
+  position: absolute; right: -4px; top: -4px;
+  background: var(--accent); color: var(--bg-deep);
+  font-size: 8px; padding: 1px 3px;
+  border-radius: var(--r-sm);
+  line-height: 1; min-width: 10px; text-align: center;
+}
+
+.vendor-link--lg {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: var(--fs-10);
+}
+.vendor-link--lg:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.vendor-link-row { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* Vendor link inside a swept row keeps its own accent color rather
+ * than inheriting the inverted text color, so the ↗ stays readable. */
+[data-motion="nier"] .nav-sweep:hover .vendor-link--sm,
+[data-motion="nier"] .nav-sweep:focus-visible .vendor-link--sm {
+  color: var(--bg-deep);
+}
+
+/* ---------------------------------------------------------------------------
+ * ToastHost — ambient P1/P2 notifications.
+ * Production component: src/components/toast-host.tsx
+ * --------------------------------------------------------------------------- */
+
+.toast-host {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  z-index: 60;
+  display: flex; flex-direction: column;
+  gap: 10px;
+  width: 380px;
+  pointer-events: none;
+}
+.toast-host > * { pointer-events: auto; }
+
+.toast {
+  position: relative;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 12px 40px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--r-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* Stripe override for toasts — sits at left:24px (vs row's 32px). */
+.toast.row-stripe::after { left: 24px; width: 3px; }
+
+/* Critical toast — outer throb matches the 1.6s row-stripe pulse. */
+[data-motion="nier"] .toast[data-sev="critical"] {
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(239, 68, 68, 0.4),
+    0 0 30px rgba(239, 68, 68, 0.20);
+  animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+             toast-throb-critical 1.6s ease-in-out 240ms infinite;
+}
+@keyframes toast-throb-critical {
+  0%, 100% {
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(239, 68, 68, 0.40),
+      0 0 30px rgba(239, 68, 68, 0.20);
+  }
+  50% {
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(239, 68, 68, 0.80),
+      0 0 50px rgba(239, 68, 68, 0.45);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-motion="nier"] .toast[data-sev="critical"] {
+    animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+[data-motion="nier"] .toast[data-sev="high"] {
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(249, 115, 22, 0.30);
+  animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+             toast-throb-high 2.4s ease-in-out 240ms infinite;
+}
+@keyframes toast-throb-high {
+  0%, 100% { box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(249,115,22,0.30); }
+  50%      { box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(249,115,22,0.55), 0 0 26px rgba(249,115,22,0.25); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-motion="nier"] .toast[data-sev="high"] { animation: toast-in 220ms; }
+}
+
+.toast__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.toast__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-loudest);
+}
+.toast__eyebrow--critical { color: var(--critical); }
+.toast__eyebrow--high     { color: var(--high); }
+.toast__eyebrow--medium   { color: var(--medium); }
+.toast__close {
+  background: transparent; border: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.toast__close:hover { color: var(--accent); background: var(--accent-soft); }
+.toast__title {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.toast__meta {
+  display: inline-flex; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--text-dim);
+}
+.toast-overflow {
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.toast-overflow__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-loudest);
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+ * BootSplash — first-load 4-stage entry animation for the bracketed-A mark.
+ * Production component: src/components/boot-splash.tsx.
+ * --------------------------------------------------------------------------- */
+
+.boot-splash {
+  position: fixed; inset: 0;
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-deep);
+  transition: opacity 600ms ease, background 600ms ease;
+  pointer-events: none;
+}
+
+.boot-stage {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  transition: transform 800ms cubic-bezier(0.7, 0, 0.3, 1),
+              opacity   400ms ease 400ms;
+}
+
+.boot-mark {
+  width: 96px; height: 96px;
+  color: var(--accent);
+  transition: width 800ms cubic-bezier(0.7, 0, 0.3, 1),
+              height 800ms cubic-bezier(0.7, 0, 0.3, 1);
+  filter: drop-shadow(0 0 24px var(--accent-glow));
+}
+
+.boot-bracket {
+  opacity: 0;
+  transition: opacity 360ms ease, transform 360ms cubic-bezier(0.7, 0, 0.3, 1);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.boot-bracket--l { transform: translateX(8px); }
+.boot-bracket--r { transform: translateX(-8px); }
+
+.boot-a, .boot-a-cross {
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.boot-wordmark {
+  font: 700 22px var(--font-sans);
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 400ms ease, transform 500ms cubic-bezier(0.7, 0, 0.3, 1);
+}
+.boot-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-loudest);
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 600ms ease 100ms;
+}
+
+.boot-phase-brackets .boot-bracket { opacity: 1; }
+.boot-phase-spread .boot-bracket { opacity: 1; transform: translateX(0); }
+.boot-phase-blink .boot-bracket { opacity: 1; transform: translateX(0); }
+.boot-phase-blink .boot-a,
+.boot-phase-blink .boot-a-cross { animation: boot-blink-in 700ms steps(2, end) forwards; }
+@keyframes boot-blink-in {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  40%  { opacity: 0; }
+  60%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+.boot-phase-hold .boot-bracket,
+.boot-phase-park .boot-bracket { opacity: 1; transform: translateX(0); }
+.boot-phase-hold .boot-a,
+.boot-phase-hold .boot-a-cross,
+.boot-phase-park .boot-a,
+.boot-phase-park .boot-a-cross { opacity: 1; }
+.boot-phase-hold .boot-wordmark,
+.boot-phase-park .boot-wordmark { opacity: 1; transform: translateY(0); }
+.boot-phase-hold .boot-tag,
+.boot-phase-park .boot-tag { opacity: 1; }
+
+.boot-phase-park {
+  background: transparent;
+  opacity: 0;
+}
+.boot-phase-park .boot-stage {
+  transform: translate(calc(-50vw + 100px), calc(-50vh + 32px)) scale(0.18);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-bracket, .boot-a, .boot-a-cross, .boot-wordmark, .boot-tag {
+    opacity: 1 !important; transform: none !important; transition: none !important;
+  }
+  .boot-splash { transition: opacity 200ms ease; }
+  .boot-phase-park { opacity: 0; }
+}
+
+/* Error — critical-tinted body replacement w/ actionable copy. */
+.state-error {
+  display: flex; flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  border-radius: var(--r-sm);
+}
+.state-error__head { display: flex; align-items: center; gap: 8px; }
+.state-error__glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: var(--r-sm);
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--critical);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.state-error__msg {
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  color: var(--text-primary);
+}
+.state-error__code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--critical);
+}
+
+/* ---------------------------------------------------------------------------
+ * Onboarding guide — stepped walkthrough with a game-menu "loading"
+ * transition between steps. The outgoing step dims + an accent loader bar
+ * sweeps across, then the next step slides in. Collapses to instant under
+ * prefers-reduced-motion.
+ * --------------------------------------------------------------------------- */
+.onb-stepview {
+  min-height: 96px; /* steady the panel height so step swaps don't jump */
+}
+
+/* Incoming step — quick fade + slight rise. */
+.onb-step-content--in {
+  animation: onb-step-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes onb-step-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Outgoing/loading beat — dim + nudge while the loader bar sweeps. */
+.onb-step-content--out {
+  opacity: 0.3;
+  transform: translateY(-4px);
+  transition: opacity 170ms ease, transform 170ms ease;
+}
+
+/* The "loading" sweep — a thin accent bar racing across the top of the
+ * step view (the game-settings-menu panel-load feel). */
+.onb-loadbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: onb-loadbar 200ms linear;
+  z-index: 3;
+  pointer-events: none;
+}
+@keyframes onb-loadbar {
+  from { transform: translateX(-60%); opacity: 0.4; }
+  60%  { opacity: 1; }
+  to   { transform: translateX(280%); opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-step-content--in { animation: none; }
+  .onb-step-content--out { opacity: 1; transform: none; transition: none; }
+  .onb-loadbar { display: none; }
+}

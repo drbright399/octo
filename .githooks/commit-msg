@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg: refuse a commit message that carries a secret, a term
+# from .githooks/.local-block, or anything the public standard keeps out (the
+# strict --publish checks: IPs, home paths, memory links, real e-mail
+# addresses, PSA ticket numbers, ...; Rick, 2026-10-15: the private repo meets
+# the public standard too). The usual trailers pass: "Co-Authored-By: ...
+# <noreply@...>" and a "Claude-Session: https://claude.ai/code/session_..." link.
+#
+# Lines starting with '#' are checked too: git keeps them with -m / -F
+# (cleanup=whitespace) and with cleanup=verbatim. They are skipped only when an
+# editor ran and git's own template says it strips them (the last "will be
+# ignored" hint, right under git's "Please enter the commit message" line, and
+# no "will be kept" hint). The comment string is git's, read from its
+# configuration (core.commentChar / core.commentString, '#' by default), never
+# one the message names; commit.cleanup=whitespace|verbatim strips nothing. The
+# "git commit -v" diff is cut only below git's own scissors block (the cut line
+# and its two explanation lines), and only when git's -v diff follows it (after
+# comment lines only; with commit.cleanup=scissors, comment lines alone will
+# do): a scissors line or block typed or pasted into a message is kept by git,
+# so what follows it is checked.
+# Messages live in history like code does; the pre-push hook checks them
+# again. Install once per clone: scripts/install_hooks.sh
+set -euo pipefail
+# shellcheck source=lib-scan.sh
+. "$(dirname "$0")/lib-scan.sh"
+
+exec "$py" "$scanner" --message "$1" --publish

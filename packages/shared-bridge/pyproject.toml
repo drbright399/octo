@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared-bridge"
+version = "1.0.0"
+description = "Versioned public bridge contract between Athena (control plane) and OCTO (data plane) per ADR-004"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Athena/OCTO platform team"},
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "mypy>=1.5",
+    "ruff>=0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared_bridge*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "RET", "SIM", "PL"]
+ignore = ["PLR0913"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

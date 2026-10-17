@@ -1,0 +1,52 @@
+[
+  {
+    "id": "alert-001",
+    "severity": "critical",
+    "status": "open",
+    "source": "rmm",
+    "tenant": "acme",
+    "title": "Ransomware behavior detected on workstation WS-04",
+    "summary": "EDR flagged mass file rename in Documents share within 12s. Process: encsvc.exe (unsigned).",
+    "occurred_at": "2026-05-06T13:28:14Z"
+  },
+  {
+    "id": "alert-002",
+    "severity": "high",
+    "status": "acknowledged",
+    "source": "network",
+    "tenant": "globex",
+    "title": "Unusual outbound traffic to non-allowlisted ASN",
+    "summary": "Sustained 4MB/s from VLAN 30 to AS14061 over 8 minutes.",
+    "occurred_at": "2026-05-06T13:11:02Z"
+  },
+  {
+    "id": "alert-003",
+    "severity": "medium",
+    "status": "open",
+    "source": "buoy.opencanary",
+    "tenant": "initech",
+    "title": "Honeypot SSH login attempt",
+    "summary": "Single attempt, root user, source 198.51.100.7. No follow-up.",
+    "occurred_at": "2026-05-06T12:47:55Z"
+  },
+  {
+    "id": "alert-004",
+    "severity": "low",
+    "status": "resolved",
+    "source": "wazuh",
+    "tenant": "hooli",
+    "title": "Failed sudo on backup host",
+    "summary": "User 'maint' fat-fingered password twice. Cleared on third try.",
+    "occurred_at": "2026-05-06T11:32:18Z"
+  },
+  {
+    "id": "alert-005",
+    "severity": "info",
+    "status": "resolved",
+    "source": "system.audit",
+    "tenant": "msp_root",
+    "title": "Operator session opened",
+    "summary": "Operator logged in via TOTP. Nothing anomalous.",
+    "occurred_at": "2026-05-06T08:01:00Z"
+  }
+]

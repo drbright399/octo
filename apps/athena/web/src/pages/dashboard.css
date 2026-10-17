@@ -1,0 +1,42 @@
+/* Dashboard grid overrides — Nier-inspired styling on top of
+   react-grid-layout's defaults. Sharp corners + violet drop-shadow
+   on the drag preview, no fluffy resize handle. */
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent, #a78bfa) !important;
+  opacity: 0.15 !important;
+  border-radius: 0 !important;
+  transition-duration: 100ms !important;
+}
+
+/* Hide RGL's default southeast resize handle look (we'll show our own
+   styled handle only in customize mode). */
+.react-grid-item > .react-resizable-handle {
+  background-image: none !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.dashboard-customizing .react-grid-item > .react-resizable-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dashboard-customizing .react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent, #a78bfa);
+  border-bottom: 2px solid var(--accent, #a78bfa);
+}
+
+.dashboard-customizing .react-grid-item {
+  cursor: grab;
+}
+.dashboard-customizing .react-grid-item.react-draggable-dragging {
+  cursor: grabbing;
+}

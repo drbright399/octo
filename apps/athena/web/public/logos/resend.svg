@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" role="img" aria-label="Resend">
+  <rect width="120" height="32" fill="none"/>
+  <text x="0" y="24" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="22" font-weight="700" letter-spacing="-0.5" fill="currentColor">Resend</text>
+</svg>

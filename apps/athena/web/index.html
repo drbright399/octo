@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="nier">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <title>Athena Console — Data Plane</title>
+    <!-- Appearance bootstrap: applies the persisted theme + background
+         scheme before first paint (no flash). An external same-origin
+         classic script ON PURPOSE: the production CSP is
+         `script-src 'self'` (an inline script is refused there) and a
+         module script would be deferred past first paint. Fails closed
+         to the dark / baseline markup defaults above.
+         The file name is not content-hashed and /assets/ is served
+         `immutable` — bump ?v= whenever the script changes. -->
+    <script src="/assets/appearance-boot.js?v=1"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

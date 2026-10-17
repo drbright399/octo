@@ -1,0 +1,15 @@
+# octo-llm runtime dependencies.
+# Pinned to known-good versions; bump deliberately, not opportunistically.
+
+fastapi==0.136.1
+uvicorn[standard]==0.41.0
+pydantic==2.13.3
+
+# Slice 7b — real inference via llama-cpp-python (CPU, GGUF). Building
+# from source on first install adds ~2 minutes to the Docker build.
+# Pinned to a recent stable release.
+llama-cpp-python==0.3.23
+
+# Optional but useful — psutil reports the post-load RSS for /v1/healthz
+# so operators can see how much RAM the loaded model is taking.
+psutil==7.2.2

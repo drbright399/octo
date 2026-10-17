@@ -1,0 +1,125 @@
+# Athena/OCTO — keep the repo clean. Anything that touches secrets,
+# customer data, or local-host state belongs in vault/internal-only paths,
+# never in the tree.
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+env/
+
+# --- Node / JS ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log
+.next/
+.nuxt/
+out/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Backup / scratch artifacts ---
+*.bak
+*.tmp
+*.orig
+*.rej
+*.pre-*
+*.post-*-snapshot-*
+*.draft
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Local data — never commit ---
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+!schema/*.sql
+!seed/*.sql
+
+# --- Secrets — never commit ---
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.gpg
+*.gpg.*
+secrets/
+# Narrowed 2026-05-18: only ignore top-level credentials/ (the
+# vault-data shape) — `apps/octo/credentials/` is source code for the
+# adapter-credentials Fernet vault implementation and must be tracked.
+/credentials/
+
+# Locally-installed dev tooling (e.g. go-pmtiles binary fetched by
+# scripts/fetch_dev_tiles.sh). Platform-specific + reproducible from
+# the script — never commit.
+scripts/.bin/
+
+# --- Local-only override files ---
+# Pattern: foo.local.ts / foo.local.py / foo.local.json sit next to
+# tracked foo.ts / foo.py / foo.json and override them on this machine.
+# Used for: tenant-specific mock data, deployment-specific config, etc.
+*.local.ts
+*.local.tsx
+*.local.py
+*.local.json
+*.local.yml
+*.local.yaml
+
+# --- Internal-only docs (operational, customer-bearing, sprint logs) ---
+docs/internal/
+**/internal/
+**/INTERNAL-*.md
+
+# --- Pre-commit local-block list (per-machine pattern additions) ---
+.githooks/.local-block
+# --- Public-copy replacement map (real => neutral; holds the real strings) ---
+.githooks/.publish-map
+
+# --- Build outputs ---
+*.tar.gz
+*.zip
+*.tgz
+
+# Phase 2 packages venv. Two forms — trailing slash covers a real dir,
+# no-slash covers a symlink-to-venv (dev pair may symlink the
+# dev-tree venv into the sanitized tree to share dependencies).
+packages/.venv/
+packages/.venv
+packages/**/*.egg-info/
+packages/**/__pycache__/
+packages/**/.pytest_cache/
+
+# Coverage / build artifacts in apps/athena/web
+apps/athena/web/coverage/
+apps/athena/web/dist/
+apps/athena/web/.vite/

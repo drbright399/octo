@@ -1,0 +1,8 @@
+# Default reviewers
+*                                   @drbright399
+# Security-sensitive surfaces require the security maintainer
+/packages/shared-bridge/            @drbright399
+/apps/octo/auth/                    @drbright399
+/apps/octo/credentials/             @drbright399
+/apps/octo/sanitized_pool/          @drbright399
+/SECURITY.md                        @drbright399

@@ -1,0 +1,39 @@
+[Unit]
+Description=Athena Buoy Forwarder v2 — multi-sensor → OCTO per-client events
+After=network-online.target suricata.service octo-forwarder.service
+Wants=network-online.target
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/buoy-forwarder/forwarder.env
+ExecStart=/usr/local/bin/buoy-forwarder.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/buoy-forwarder
+ReadOnlyPaths=/var/log/suricata /etc/buoy-forwarder /usr/local/lib/buoy-forwarder
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+MemoryMax=128M
+MemoryHigh=96M
+
+[Install]
+WantedBy=multi-user.target

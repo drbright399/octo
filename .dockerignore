@@ -1,0 +1,41 @@
+# Build context hygiene — keep the tarball small and reproducible.
+
+# Local virtualenvs (developer machines)
+**/.venv
+**/venv
+**/.tox
+
+# Python build artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Tests are not needed inside the runtime image; test-only deps would
+# bloat the layer and the image runs production code only.
+**/tests
+
+# Local SQLite databases (state belongs in volumes, not the image)
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+
+# Editor / IDE / OS noise
+.vscode
+.idea
+.DS_Store
+
+# Git
+.git
+.gitignore
+
+# Docs and session notes — not needed in the image
+docs
+README.md
+
+# Top-level dev tooling that doesn't belong in the runtime
+*.log

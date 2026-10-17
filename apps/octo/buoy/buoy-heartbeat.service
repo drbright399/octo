@@ -1,0 +1,47 @@
+# /etc/systemd/system/buoy-heartbeat.service
+[Unit]
+Description=Athena Buoy Heartbeat — fleet status push to OCTO
+After=network-online.target tailscaled.service
+Wants=network-online.target
+# Heartbeat doesn't depend on the forwarders running — we want to
+# report "service X is inactive" even when X is the one that's down.
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/buoy-heartbeat/heartbeat.env
+ExecStart=/usr/local/bin/buoy-heartbeat.py
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+# Hardening — mirrors buoy-forwarder.service. Root is required only
+# because systemctl is-active is what we shell out to and that's a
+# system tool; the daemon performs no writes to the system itself.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/buoy-heartbeat
+ReadOnlyPaths=/etc/buoy-heartbeat
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# 4 GB Pi — keep the daemon's RAM bounded. Heartbeat is much lighter
+# than buoy-forwarder (no JSON tailing, no event buffering beyond
+# the QUEUE_MAX retry list), so 128 MB is plenty.
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

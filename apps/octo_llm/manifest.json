@@ -1,0 +1,62 @@
+{
+  "manifest_version": 1,
+  "comment": [
+    "Factory selection of blessed LLM models for octo-llm.",
+    "super_admin chooses from this set via Settings → System.",
+    "",
+    "Three tiers covering the operator-experience spectrum:",
+    "  - dev / ultra-light  : TinyLlama 1.1B  (~670MB)",
+    "  - default / balanced : Qwen 2.5 3B     (~1.9GB)",
+    "  - production / max   : Granite 3.1 8B  (~4.5GB)",
+    "",
+    "Adding an entry requires the model file from a trusted source,",
+    "the sha256 of that exact file (pinned in this manifest), and a",
+    "code review. sha256: null entries are downloadable only via the",
+    "BYOM path (scp into models dir) until a code review pins the",
+    "hash here. Slice 5d-4 (the in-product download broker) is what",
+    "wires up the verified-download flow.",
+    "",
+    "Note (2026-06-02): Granite is sourced from bartowski's GGUF mirror",
+    "because the upstream ibm-granite GGUF repo is HF-gated (401). The",
+    "pinned sha256 is identical across both — it's the same file — so the",
+    "switch is verified, not a re-pin."
+  ],
+  "models": [
+    {
+      "name": "tinyllama-1.1b-chat",
+      "display_name": "TinyLlama 1.1B Chat (dev)",
+      "description": "1.1B parameters. Fast on CPU, low quality. For pipeline + UI validation; quality is too low for production triage.",
+      "source_url": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "size_bytes_approx": 670000000,
+      "sha256": "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0",
+      "license": "Apache-2.0",
+      "publisher": "TinyLlama",
+      "tier": "dev",
+      "default": false
+    },
+    {
+      "name": "qwen-2.5-3b-q4",
+      "display_name": "Qwen 2.5 3B Instruct (balanced)",
+      "description": "3B parameters. Good instruction follower; reasonable triage notes on modest CPU. Recommended default for MSP deployments without GPU.",
+      "source_url": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "size_bytes_approx": 1900000000,
+      "sha256": "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94",
+      "license": "Apache-2.0",
+      "publisher": "Qwen",
+      "tier": "balanced",
+      "default": true
+    },
+    {
+      "name": "granite-3.1-8b-q4",
+      "display_name": "IBM Granite 3.1 8B Instruct (max)",
+      "description": "8B parameters. Higher-fidelity triage; slower per call. Best when deployed on hosts with 16GB+ RAM headroom for octo-llm.",
+      "source_url": "https://huggingface.co/bartowski/granite-3.1-8b-instruct-GGUF/resolve/main/granite-3.1-8b-instruct-Q4_K_M.gguf",
+      "size_bytes_approx": 4500000000,
+      "sha256": "b72cfca8e30f23af77f922ce18d6fe1a5d4925907dddf7249c0cabc2739d48c8",
+      "license": "Apache-2.0",
+      "publisher": "ibm-granite",
+      "tier": "max",
+      "default": false
+    }
+  ]
+}
