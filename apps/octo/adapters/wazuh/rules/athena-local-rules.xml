@@ -1,0 +1,112 @@
+<!--
+  athena-local-rules.xml — Wazuh manager-side suppressions for known
+  noise patterns on Athena buoys.
+
+  Lives at: /var/ossec/etc/rules/local_rules.xml on the Wazuh manager
+  (source instance `primary`). Wazuh loads local_rules.xml after the stock
+  ruleset, so these overrides take effect on the next manager reload:
+
+      sudo /var/ossec/bin/wazuh-control restart
+
+  Each rule below documents:
+    - The false-positive pattern that motivates the suppression
+    - Operational evidence (which buoy hit it, when, why FP)
+    - The narrow `<match>` / `<regex>` scope so legitimate alerts
+      with the same parent rule still fire
+
+  Adding a new suppression here MUST include this same context block —
+  the goal is auditable suppressions, not silent rule mutation.
+-->
+<group name="rootcheck,athena-suppressions,ossec">
+
+  <!--
+    Rule 510 — rootcheck "Generic" signature false-positives on stock
+    Debian system binaries.
+
+    Why it FPs: the "Generic" rootcheck signature regex is
+        'bash|^/bin/sh|file\.h|proc\.h|/dev/[^n]|^/bin/.*sh'
+    This matches help-text + error-message string literals embedded
+    in setuid-helper + coreutils-style binaries — they contain those
+    substrings in their normal help/error messages.
+
+    Iteration history:
+      - 2026-05-16 v1: narrow path-list match
+        (/usr/bin/diff|/usr/bin/sed|/usr/bin/awk|/usr/bin/grep|
+         /usr/bin/cut|/usr/bin/sort|/usr/bin/tail|/usr/bin/head|
+         /usr/bin/uniq|/usr/bin/tr). Verification: dpkg -V on each
+        flagged file returned empty (clean package manifest).
+
+      - 2026-05-18 v2 (this revision): widened to `(Generic).` match.
+        A 2-day soak under v1 still produced rule-510 alerts on
+        newly onboarded buoys because v1 missed two patterns:
+
+          (a) Rootcheck reports paths WITHOUT the /usr prefix on
+              merged-/usr Debian (/bin/diff, /bin/chfn, /bin/passwd
+              etc.) — v1 only listed /usr/bin/* variants.
+
+          (b) Additional FP-prone setuid binaries weren't in v1's
+              list (/bin/chfn, /bin/chsh, /bin/passwd from the
+              `passwd` package).
+
+        Verification before widening (2026-05-18):
+          - dpkg -V passwd diffutils → clean (only /etc/default/useradd
+            shows a `c` config-edit flag, expected and irrelevant)
+          - sha256sum across every fleet buoy for /usr/bin/{diff,
+            passwd,chfn,chsh}: byte-identical, ruling out targeted
+            tamper or fleet-wide compromise.
+
+        Decision: stop maintaining the path-list (every new
+        FP-prone binary we hadn't yet seen would require an edit).
+        Match on the literal "(Generic)." signature-name suffix that
+        rootcheck appends to every Generic-class detection. This
+        suppresses ONLY the noisy Generic class. Named-signature
+        rootkit detections (e.g., "(kbeast Rootkit).",
+        "(tornkit Rootkit).") would NOT end in "(Generic)." and
+        continue to alert normally.
+
+    Tradeoff acknowledged: rootcheck's Generic signature is widely
+    considered noisy enough that many Wazuh shops disable it outright
+    or replace rootcheck with auditd/Falco for HIDS. v2 keeps
+    rootcheck on but drops the noisiest class. Re-evaluate on next
+    HIDS review.
+  -->
+  <rule id="100510" level="0">
+    <if_sid>510</if_sid>
+    <match>(Generic).</match>
+    <description>Athena: suppress rootcheck Generic-signature FPs on stock Debian binaries (level=0). Named-signature 510 alerts still fire. See iteration history in athena-local-rules.xml.</description>
+  </rule>
+
+  <!--
+    Rule 533 — "Listened ports status (netstat) changed" firing on
+    tailscaled ephemeral UDP-port rotation.
+
+    Why it FPs: tailscaled rotates source UDP ports for STUN /
+    NAT-traversal — typical entries that come and go:
+        udp 0.0.0.0:<random> <pid>/tailscaled
+    The diff between netstat snapshots shows ONLY tailscaled lines
+    changing; the security-relevant listening set (SSH, OpenCanary
+    honeypots, Pi-hole, NextDNS) stays identical.
+
+    Confirmed FP (2026-05-16): over 24h, every firing's diff was
+    tailscaled-only.
+
+    Action: DOWNGRADE to level=1 instead of full suppression (level=0)
+    so a real port change on a non-tailscaled process still alerts
+    at level=7 (parent rule 533 fires first and is suppressed only
+    when this child rule matches). The level=1 archived events still
+    flow through the buoy-forwarder into OCTO; they just don't
+    trigger alert routing.
+
+    Note: this is INTENTIONALLY less aggressive than the rootcheck
+    rule above. The reason: an attacker could open a new listening
+    port while tailscaled is ALSO rotating, and the log would still
+    contain "tailscaled" so a naive <match> would silently drop the
+    real alert. Downgrade-not-suppress preserves the archive trail.
+  -->
+  <rule id="100533" level="1">
+    <if_sid>533</if_sid>
+    <match>tailscaled</match>
+    <description>Athena: downgrade rule 533 (netstat changed) when tailscaled in log — STUN port rotation noise. Still archived at level=1; check OCTO events.db for the full netstat diff if review needed.</description>
+  </rule>
+
+</group>

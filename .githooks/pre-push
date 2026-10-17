@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# .githooks/pre-push: scan EVERY commit a push would send (the lines it adds and
+# its message) and the name and message of a pushed annotated tag, so a commit
+# made with --no-verify, in another clone, or before the hooks were installed is
+# still caught before it reaches the remote.
+#
+# Everything here runs the strict --publish checks (Rick, 2026-10-15: the private
+# repo meets the public standard too): besides secrets and local-block terms,
+# LAN / tailnet / public IPs, home and /mnt paths, memory links, real e-mail
+# addresses, NextDNS profile ids, URL path tokens, PSA ticket numbers and
+# non-image binaries are refused, on any remote.
+#
+# git feeds one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+# Only what is new on THIS remote is scanned: a commit the remote already holds
+# under ANY of its refs (moving main to commits pushed on a feature branch) was
+# checked when it was first pushed there and is not checked again. What the
+# remote holds is asked of the remote itself, once per push: `git ls-remote` of
+# the location being pushed to ($2, the push URL), never this clone's
+# remote-tracking refs, which can be stale (a branch deleted or force-pushed
+# away elsewhere stays in refs/remotes/ until a `fetch --prune`). A commit that
+# is fine on the private origin is not automatically fine elsewhere: pushing to
+# another remote, or to a bare URL, checks everything that remote does not
+# hold. If the remote cannot be listed, nothing is assumed to be there: an
+# update checks exactly <remote tip>..<local tip>, a new ref its whole history.
+#
+# A tip the remote lists can only be left out if this clone has it. When the
+# listing names branch or tag tips this clone lacks (another clone pushed since
+# the last fetch), their objects are fetched first, from the same URL, by ref
+# name: `git fetch --no-tags --no-write-fetch-head --refmap=` stores the
+# objects and touches no ref (no remote-tracking ref, no FETCH_HEAD, no tag).
+# If that fetch fails, those tips stay unknown, what they reach is checked
+# again, and a refusal says the clone is behind: run `git fetch <remote>`,
+# then push again.
+#
+# The REMOTE ref name is checked first (scan_sensitive.py --ref-name --publish):
+# a branch or tag name with a .githooks/.local-block term (a client name), a
+# token shape, or a never-public value (an IP, an e-mail address, a ticket
+# number, a home path, a tailnet name) is refused, since anyone who can list
+# the remote's refs sees it. Push it under a neutral name instead
+# (git push <remote> <branch>:refs/heads/<neutral>). An ANNOTATED tag records
+# its own name inside the tag object, so pushing it under another ref name does
+# not hide that name: the range scan refuses it, and the tag has to be
+# re-created under a neutral name. Deleting a remote ref sends nothing new and
+# is never refused.
+#
+# The terms come from .githooks/.local-block (this checkout's, or the main
+# checkout's for a linked worktree, or $SCAN_SENSITIVE_LOCAL_BLOCK; a variable
+# naming a missing file is an error). With no block list at all only token
+# shapes and never-public values can be checked, and the scanner says so on stderr.
+# Any scanner failure (exit 1 = findings, 2 = error) and a line without a remote
+# ref name refuse the push. Install once per clone: scripts/install_hooks.sh
+set -euo pipefail
+# shellcheck source=lib-scan.sh
+. "$(dirname "$0")/lib-scan.sh"
+
+remote="${1:-}"
+url="${2:-$remote}"
+zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
+status=0
+
+# What the remote holds right now (one ls-remote per push, on first need).
+tips=""
+behind=0  # listed tips this clone lacks and could not fetch
+cleanup() { [[ -n "$tips" ]] && rm -f "$tips"; return 0; }
+trap cleanup EXIT
+list_remote() {
+  [[ -n "$tips" ]] && return 0
+  tips="$(mktemp "${TMPDIR:-/tmp}/athena-pre-push.XXXXXX")"
+  if [[ -n "$url" && "$url" != -* ]] && git ls-remote "$url" >"$tips" 2>/dev/null </dev/null; then
+    fetch_missing
+    return 0
+  fi
+  : >"$tips"  # nothing known to be there: every pushed commit is checked
+  echo "pre-push: could not list the refs of the remote being pushed to; checking each pushed range as" \
+       "new (an update: exactly <remote tip>..<local tip>; a new ref: its whole history)" >&2
+}
+# The listed branches and tags whose tips this clone does not have ("^{}"
+# lines repeat a tag's target and come with the tag). Other refs (a forge's
+# refs/pull/*) are not fetched: what only they reach is checked again.
+missing_refs() {
+  local have
+  have="$(cut -f1 "$tips" | git cat-file --batch-check='%(objectname) %(objecttype)' 2>/dev/null)" || return 0
+  printf '%s\n' "$have" | awk -F'\t' '
+    FILENAME == "-" { if ($0 ~ / missing$/) { split($0, f, " "); gone[f[1]] = 1 } next }
+    ($1 in gone) && $2 ~ /^refs\/(heads|tags)\// && $2 !~ /\^\{\}$/ { print $2 }' - "$tips"
+}
+# Fetch the objects of those tips (no ref is written), so they can be peeled
+# and left out like every other tip the remote holds.
+fetch_missing() {
+  local -a refs=()
+  local ref
+  while IFS= read -r ref; do
+    [[ -n "$ref" && "$ref" != -* ]] && refs+=("$ref")
+  done < <(missing_refs)
+  ((${#refs[@]})) || return 0
+  if GIT_TERMINAL_PROMPT=0 git fetch --quiet --no-tags --no-write-fetch-head --refmap= \
+       --no-recurse-submodules --no-auto-maintenance -- "$url" "${refs[@]}" </dev/null >/dev/null 2>&1; then
+    return 0
+  fi
+  behind=${#refs[@]}
+  echo "pre-push: the remote holds ${behind} ref tip(s) this clone does not have, and fetching them failed:" \
+       "commits the remote already holds may be checked again" >&2
+}
+# How to name the remote in advice: a configured remote by its name; a URL is
+# never echoed (it can carry a token).
+fetch_hint="<remote>"
+if [[ -n "$remote" && "$remote" != -* ]] && git remote 2>/dev/null | grep -qxF -- "$remote"; then
+  fetch_hint="$remote"
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "${local_sha:-}" || "$local_sha" == "$zero" ]] && continue  # a delete sends nothing
+  if [[ -z "${remote_ref:-}" ]] || ! "$py" "$scanner" --ref-name "$remote_ref" --publish </dev/null; then
+    # The name itself may be the problem: never echo it unmasked.
+    echo "pre-push: refusing: the remote ref name carries a blocked term, a token or a never-public value (an IP, an e-mail address, a ticket number, ...), or could not be checked (see above). Push it under a neutral name: git push <remote> <branch>:refs/heads/<neutral>" >&2
+    status=1
+    continue
+  fi
+  list_remote  # first: it may fetch the remote tip of this very ref
+  if [[ "$remote_sha" == "$zero" ]] || ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    spec="$local_sha"                   # new ref, or a remote tip we do not have
+  else
+    spec="${remote_sha}..${local_sha}"  # minus whatever the remote holds under its other refs
+  fi
+  if ! "$py" "$scanner" --range "$spec" --remote-tips "$tips" --publish </dev/null; then
+    # Only the remote name (checked above) is echoed: the LOCAL name may carry
+    # the very term or token that was found.
+    echo "pre-push: refusing to push to ${remote_ref} (see above)." >&2
+    if ((behind)); then
+      echo "pre-push: this clone is behind the remote (${behind} ref tip(s) it could not fetch): the findings" \
+           "may be in commits the remote already holds. Run 'git fetch ${fetch_hint}', then push again." >&2
+    fi
+    if [[ "$remote_ref" == refs/tags/* ]]; then
+      echo "pre-push: a blocked <tag-name> is recorded in the annotated tag itself: re-create the tag under a neutral name (a refspec rename keeps it)." >&2
+    fi
+    status=1
+  fi
+done
+
+exit "$status"

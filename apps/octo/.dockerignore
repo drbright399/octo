@@ -1,0 +1,39 @@
+# Keep the build context lean — only ship code + deps, no local state
+# or developer ephemera.
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+*.egg
+
+# Local state — never ship dev databases or vault material
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+state/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Tests / docs (production image doesn't need them)
+tests/
+docs/
+*.md
+
+# Snapshots, archives, scratch
+snapshots/
+archive/
+.tmp/

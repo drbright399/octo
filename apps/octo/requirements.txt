@@ -1,0 +1,34 @@
+# OCTO core runtime dependencies.
+# Pinned to known-good versions; bump deliberately, not opportunistically.
+
+fastapi==0.136.1
+uvicorn[standard]==0.41.0
+pydantic==2.13.3
+httpx==0.28.1
+
+# Audit-grade /search export — branded PDF reports. Pure-Python, no
+# system deps. Used by apps/octo/api/routers/search_export.py.
+reportlab==4.2.5
+
+# Container/host runtime metrics — CPU + memory % surfaced on the
+# operator dashboard via /dashboard/host-metrics. Standard, well-
+# audited, no system deps beyond /proc on Linux containers.
+psutil==7.2.2
+
+# Note: sqlite is in the stdlib; structlog will land when logging is wired
+# up (currently using stdlib logging via uvicorn's --access-log).
+# Bedrock API surface (apps.octo.api:create_app) — auth (TOTP + WebAuthn),
+# credentials vault (Fernet), and the requests/urllib3-based adapters.
+# Pins match the legacy host's production venv as of 2026-09-19.
+pyotp==2.9.0
+webauthn==2.7.1
+cryptography==47.0.0
+requests==2.34.0
+urllib3==2.7.0
+# First-run: the setup link is also rendered as a terminal QR (pure python).
+qrcode==8.2
+# Cold-archive encryption (apps/octo/retention/archive_crypto.py): the
+# standard age v1 format, X25519 recipients — bindings to the `age` Rust
+# crate, so the stock `age` CLI decrypts what Athena writes. Ships abi3
+# manylinux wheels (no system deps, no runtime Python deps).
+pyrage==1.4.0

@@ -1,0 +1,171 @@
+/* fleet.css — keyframes + low-level styles that don't fit Tailwind cleanly.
+ *
+ * Imported by:
+ *   - components/fleet-map-overlay.tsx — radar + heartbeat + hub-pulse + ambient-urgent
+ *   - components/buoy-drawer.tsx       — terminal lock overlay
+ *
+ * The fleet redesign (per the 2026-05-19 Fleet redesign hand-off)
+ * uses Tailwind utilities for layout/spacing/color and reaches into this
+ * file only for animations + the `--throb-color` CSS-var trick that keeps
+ * the heartbeat keyframe color-agnostic.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Radar fan rotation (10s revolution per fleet-redesign §3 visual ref).
+ * The transform-origin is set inline per-OCTO so the spin stays centered
+ * on each hub even as the map pans.
+ * ------------------------------------------------------------------------- */
+@keyframes fleet-radar-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Hub-hex breathing — keeps the OCTO marker visibly "powered" even when
+ * the radar fan is at an angle that doesn't sell motion on its own. */
+@keyframes fleet-hub-pulse {
+  0%, 90%, 100% { filter: drop-shadow(0 0 6px var(--accent)); }
+  50%           { filter: drop-shadow(0 0 14px var(--accent)); }
+}
+
+/* Lub-dub buoy heartbeat — fires when the radar bar crosses the buoy's
+ * azimuth (animation-delay = az/360 * RADAR_PERIOD, computed per buoy).
+ * Uses --throb-color (set inline per-buoy via the `style` prop) so the
+ * keyframe stays color-agnostic. */
+@keyframes fleet-heartbeat {
+  0%  { filter: drop-shadow(0 0 10px var(--throb-color)) brightness(1.3); }
+  4%  { filter: drop-shadow(0 0  3px var(--throb-color)); }
+  8%  { filter: drop-shadow(0 0  8px var(--throb-color)) brightness(1.2); }
+  16%, 100% { filter: drop-shadow(0 0 0 transparent); }
+}
+
+/* Triple-peak urgent heartbeat for red buoys — same animation-delay
+ * recipe; just more pronounced. Stacks with fleet-ambient-urgent below. */
+@keyframes fleet-heartbeat-urgent {
+  0%  { filter: drop-shadow(0 0 16px var(--throb-color)) brightness(1.5); }
+  4%  { filter: drop-shadow(0 0  5px var(--throb-color)); }
+  8%  { filter: drop-shadow(0 0 14px var(--throb-color)) brightness(1.4); }
+  12% { filter: drop-shadow(0 0  5px var(--throb-color)); }
+  16% { filter: drop-shadow(0 0 12px var(--throb-color)) brightness(1.3); }
+  22%, 100% { filter: drop-shadow(0 0 0 transparent); }
+}
+
+/* Always-on ambient glow for red buoys (1.2s breathe) so they stay
+ * urgent between radar sweeps. Wrapped around the marker in an outer
+ * <g>; the two filters stack. */
+@keyframes fleet-ambient-urgent {
+  0%, 100% { filter: drop-shadow(0 0 3px var(--throb-color)); }
+  50%      { filter: drop-shadow(0 0 9px var(--throb-color)); }
+}
+
+
+/* ---------------------------------------------------------------------------
+ * Buoy-label paint-order — keep the slug + city readable against either
+ * dark or light tiles. Tailwind doesn't have a paint-order utility.
+ * ------------------------------------------------------------------------- */
+.fleet-map-overlay__label-text {
+  paint-order: stroke fill;
+  stroke: var(--bg-deep);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+
+/* ---------------------------------------------------------------------------
+ * Terminal pane — the locked-overlay backdrop. Tailwind handles the layout
+ * + most styling; we reach into CSS for the backdrop blur + the radial
+ * highlight at the "step-up" CTA that doesn't fit a single utility class.
+ * ------------------------------------------------------------------------- */
+.fleet-terminal__lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(var(--scrim-rgb), 0.55) 0%,
+    rgba(var(--scrim-rgb), 0.88) 70%,
+    rgba(var(--scrim-rgb), 0.95) 100%
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ---------------------------------------------------------------------------
+ * Spotlight mode — when the operator toggles "spot" in the map header,
+ * the SVG overlay gets the `.fleet-map-overlay--spotlight` class. Green
+ * buoys dim to 22%; yellow / stale / red / unknown keep full opacity so
+ * the things needing attention stand out without losing fleet context.
+ * Banked 2026-05-20 from the deferred fleet-redesign followups list.
+ * ------------------------------------------------------------------------- */
+.fleet-map-overlay--spotlight .fleet-map-overlay__buoys [data-health="green"] {
+  opacity: 0.22;
+  transition: opacity 200ms ease-out;
+}
+.fleet-map-overlay__buoys [data-health] {
+  transition: opacity 200ms ease-out;
+}
+
+
+/* ---------------------------------------------------------------------------
+ * Fleet v2 site pins — a bad site's ring breathes (motion on); spotlight dims
+ * ok sites like green buoys. Colours come from the state tokens (--success,
+ * --medium, --critical, --text-dim), so every theme and light mode recolour
+ * them.
+ * ------------------------------------------------------------------------- */
+@keyframes fleet-pin-pulse {
+  0%, 100% { stroke-opacity: 0.85; transform: scale(1); }
+  50%      { stroke-opacity: 0.25; transform: scale(1.35); }
+}
+.fleet-pin-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fleet-pin-pulse 1.6s ease-in-out infinite;
+}
+.fleet-map-overlay--spotlight .fleet-map-overlay__sites [data-state="ok"] {
+  opacity: 0.22;
+}
+.fleet-map-overlay__sites [data-state] {
+  transition: opacity 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fleet-pin-pulse { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Tier Black — an unacknowledged Black pin PULSES (0.9 s: the urgent
+ * heartbeat + ambient glow recipe, on its ring) until someone acknowledges
+ * it. The radar's motion toggle does NOT stop it; only the OS's
+ * prefers-reduced-motion does — then the pin draws a static thick double
+ * ring instead (the component renders it from the same media query).
+ * Red never pulses (a static halo).
+ * ------------------------------------------------------------------------- */
+@keyframes fleet-pin-black {
+  0%, 100% { stroke-opacity: 1;   stroke-width: 2.2; transform: scale(1);
+             filter: drop-shadow(0 0 3px var(--fleet-threat-ring)); }
+  50%      { stroke-opacity: 0.35; stroke-width: 3.2; transform: scale(1.45);
+             filter: drop-shadow(0 0 9px var(--fleet-threat-ring)); }
+}
+.fleet-pin-black {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fleet-pin-black 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fleet-pin-black { animation: none; stroke-width: 3; }
+}
+.fleet-map-overlay--spotlight .fleet-map-overlay__sites [data-state="black"] {
+  opacity: 1;                       /* spotlight never dims a Black */
+}
+
+/* The global threat strip's Black chip: the same pulse, text-sized. */
+@keyframes fleet-strip-black {
+  0%, 100% { box-shadow: 0 0 0 0 var(--fleet-threat-ring); }
+  50%      { box-shadow: 0 0 0 4px transparent; }
+}
+.fleet-strip-black { animation: fleet-strip-black 0.9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .fleet-strip-black { animation: none; outline: 2px solid var(--fleet-threat-ring); }
+}

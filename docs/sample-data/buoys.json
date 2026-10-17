@@ -1,0 +1,40 @@
+[
+  {
+    "id": "buoy-acme",
+    "name": "buoy-acme",
+    "tenant": "acme",
+    "tags": ["HIPAA"],
+    "events_per_min": 142,
+    "last_seen": "3s ago",
+    "services": [
+      { "id": "opencanary", "name": "OpenCanary", "status": "ok" },
+      { "id": "wazuh-agent", "name": "Wazuh agent", "status": "degraded", "detail": "queue lag 4s" },
+      { "id": "tailnet", "name": "Mesh agent", "status": "ok" },
+      { "id": "network-syslog", "name": "Network syslog", "status": "ok" }
+    ]
+  },
+  {
+    "id": "buoy-mdr-relay",
+    "name": "buoy-mdr-relay",
+    "tenant": "msp_root",
+    "events_per_min": 0,
+    "last_seen": "8m ago",
+    "services": [
+      { "id": "relay", "name": "MDR relay", "status": "down", "detail": "auth expired" },
+      { "id": "tailnet", "name": "Mesh agent", "status": "ok" },
+      { "id": "node-exporter", "name": "node_exporter", "status": "ok" }
+    ]
+  },
+  {
+    "id": "buoy-initech",
+    "name": "buoy-initech",
+    "tenant": "initech",
+    "events_per_min": 28,
+    "last_seen": "5s ago",
+    "services": [
+      { "id": "opencanary", "name": "OpenCanary", "status": "ok" },
+      { "id": "wazuh-agent", "name": "Wazuh agent", "status": "ok" },
+      { "id": "tailnet", "name": "Mesh agent", "status": "ok" }
+    ]
+  }
+]

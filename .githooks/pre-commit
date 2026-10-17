@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit: refuse a commit whose staged lines carry a secret, a
+# never-commit file, a term from .githooks/.local-block, or anything the
+# public standard keeps out (LAN / tailnet / public IPs, home and /mnt paths,
+# double-bracket memory links, real e-mail addresses, NextDNS profile ids,
+# URL path tokens, PSA ticket numbers, binary files that are not images or
+# fonts).
+#
+# The private repo meets the public standard too (Rick, 2026-10-15), so this
+# hook runs the strict --publish checks, the same ones the public-export gate
+# runs. A documentation value that has to stay is written with a test-net IP
+# (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24), an RFC 2606 domain, a
+# placeholder path, or an allow[<detector>] marker with a real reason.
+#
+# The detectors live in ONE place, scripts/scan_sensitive.py (shared with the
+# commit-msg and pre-push hooks, the public-export gate and runtime job-output
+# redaction). Install once per clone: scripts/install_hooks.sh
+#
+# Only the lines a commit adds are checked, but a file the diff shows whole is
+# checked whole: a pure rename (git mv), a mode change (chmod) or a merge's
+# first-parent diff. Touch an old file, clean it: a file carrying content from
+# before the strict checks has to meet them once it is moved. Each staged blob
+# is read by its object id, so a file name that is not UTF-8 is checked like
+# any other; a blob that cannot be read refuses the commit.
+#
+# --no-verify skips this hook; the pre-push hook scans every pushed commit
+# again, so a skipped commit is still caught before it leaves the machine.
+set -euo pipefail
+# shellcheck source=lib-scan.sh
+. "$(dirname "$0")/lib-scan.sh"
+
+exec "$py" "$scanner" --staged --publish
