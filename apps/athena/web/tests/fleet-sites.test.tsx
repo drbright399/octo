@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { FleetLayer, FleetSite, FleetSitesResponse, LayerName, SiteState } from "@/contracts/fleet";
 import FleetMapOverlay, { __test__ as overlayTest, type ProjectFn, type SiteMarker } from "@/components/fleet-map-overlay";
 import FleetMapView, { FIT_MAX_ZOOM, FIT_PADDING_PX, pinBounds } from "@/components/fleet-map-view";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import FleetLegend from "@/components/fleet-legend";
 import FleetSiteList from "@/components/fleet-site-list";
 import FleetSiteDrawer from "@/components/fleet-site-drawer";

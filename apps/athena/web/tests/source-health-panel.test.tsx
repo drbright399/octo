@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import SourceHealthPanel from "@/components/source-health-panel";
 import type { SourceHealthResponse, SourceHealthRow } from "@/lib/source-health";
 
@@ -71,6 +71,10 @@ describe("SourceHealthPanel — full view (analyst+)", () => {
       expect(screen.getByLabelText(`Show ${name}`)).toBeInTheDocument();
     }
     // The integration's card: its last poll and its last event.
+    // The rotator mounted from a fetch that resolved outside act(); let its
+    // mount effects (the index reset) flush first, or under load that reset
+    // can land after this click and show the first card again.
+    await act(async () => {});
     fireEvent.click(screen.getByLabelText("Show Datto RMM"));
     const card = screen.getByLabelText(/Source: Datto RMM, status ok/);
     expect(within(card).getByText("INTEGRATION")).toBeInTheDocument();

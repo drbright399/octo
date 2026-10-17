@@ -11,15 +11,21 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
-// MapLibre GL JS touches `URL.createObjectURL(new Blob(...))` at module
-// init for its web-worker bootstrap, which jsdom doesn't support. We
-// don't exercise MapLibre's runtime in unit tests (it needs WebGL +
-// real DOM); the components that wrap it are tested via the SVG
+// MapLibre GL JS needs WebGL, Web Workers and a real layout engine,
+// none of which jsdom provides, so we don't exercise its runtime in
+// unit tests; the components that wrap it are tested via the SVG
 // overlay's pure projection callback. Stub the whole module so
 // transitive imports through pages/fleet.tsx don't blow up.
+//
+// Shape mirrors maplibre-gl v6: ESM-only, named exports, NO default
+// export (a stray `import maplibregl from "maplibre-gl"` fails loudly
+// here instead of passing against a fake default). `Map` uses a
+// `function` implementation, not an arrow: the component calls
+// `new Map(...)` and Vitest 4 invokes a mock's implementation as a
+// constructor (an arrow function there throws "is not a constructor").
 vi.mock("maplibre-gl", () => ({
-  default: {
-    Map: vi.fn(() => ({
+  Map: vi.fn(function MockMap() {
+    return {
       on: vi.fn(),
       off: vi.fn(),
       remove: vi.fn(),
@@ -27,17 +33,18 @@ vi.mock("maplibre-gl", () => ({
       project: vi.fn(() => ({ x: 0, y: 0 })),
       fitBounds: vi.fn(),
       getCanvas: vi.fn(() => ({ clientWidth: 800, clientHeight: 600 })),
-    })),
-    addProtocol: vi.fn(),
-  },
-  Map: vi.fn(),
+    };
+  }),
   addProtocol: vi.fn(),
+  setWorkerUrl: vi.fn(),
 }));
 
+// `function` implementation for the same reason as `Map` above: the
+// component calls `new Protocol()`.
 vi.mock("pmtiles", () => ({
-  Protocol: vi.fn(() => ({
-    tile: vi.fn(),
-  })),
+  Protocol: vi.fn(function MockProtocol() {
+    return { tile: vi.fn() };
+  }),
 }));
 
 // maplibre-gl ships a CSS import; vitest's transform pipeline blows up

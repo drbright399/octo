@@ -125,8 +125,10 @@ def hostile_run(tmp_path_factory):
 
 # v8: "job-output" = option / assignment runs through the whole pipeline, the
 # heaviest at one job-output stream's cap (hostile.pipeline_inputs).
+# "helper:<name>": every other module-level regex of secret_patterns, searched
+# (hostile.helper_regexes; the Format-List ReDoS, CodeQL py/polynomial-redos).
 HOSTILE_TARGETS = ([d.name for d in sp.DETECTORS] + [name for name, _ in hostile.program_regexes(sp)]
-                   + ["job-output"])
+                   + [name for name, _ in hostile.helper_regexes(sp)] + ["job-output"])
 
 
 @pytest.mark.parametrize("target", HOSTILE_TARGETS)
@@ -156,8 +158,46 @@ def test_every_detector_and_program_check_stays_fast_on_hostile_input(hostile_ru
     elif target == "job-output":
         assert paths == {"find_hits", "redact", "normalize"}
         assert max(r["size"] for r in finished.values()) >= hostile.JOB
+    elif target.startswith("helper:"):
+        assert paths == {"search"}
+        assert max(r["size"] for r in finished.values()) >= hostile.SIZE
     else:
         assert paths == {"program"}
+
+
+# The Format-List value column (secret_patterns._value_column) as it was read
+# before the split: one pattern, quadratic when searched over a blank run
+# (5.6 s on hostile.SIZE tabs, 90 s on hostile.BIG; CodeQL py/polynomial-redos).
+_ONE_PATTERN = re.compile(r"[ \t]*[^\s:][^:\r\n]{0,120}?[ \t]:[ \t]")
+
+
+def test_the_helper_inputs_hold_the_format_list_blank_run():
+    """The shape that made the one-pattern form quadratic is among what every
+    helper regex is searched on, and the two steps that replaced it search it
+    in a fraction of the budget."""
+    import time
+
+    tabs = dict(hostile.helper_inputs(sp._FORMAT_LIST_NAME, "helper:_FORMAT_LIST_NAME"))["run'\\t'"]
+    assert len(tabs) == hostile.SIZE and set(tabs) == {"\t"}
+    names = {name for name, _ in hostile.helper_regexes(sp)}
+    assert {"helper:_LEADING_BLANKS", "helper:_FORMAT_LIST_NAME"} <= names
+    assert not any(rx.pattern == _ONE_PATTERN.pattern for _, rx in hostile.helper_regexes(sp))
+    for rx in (sp._LEADING_BLANKS, sp._FORMAT_LIST_NAME):
+        start = time.process_time()
+        rx.search(tabs)
+        assert time.process_time() - start < hostile.BUDGET / 5
+
+
+@pytest.mark.parametrize("line", [
+    "PathName : x", "  PathName : x", "\t\tName\t:\tv", "Name: x", "Name :x", " : x", "\t: x",
+    ":x", "", "   ", "\t\t\t", "a" * 121 + " : x", "a" * 120 + " : x", "Na:me : x", "Name  :  x",
+    "\fName : x", " \tName : x\nNext : y", "Name\n : x", "Name\t \t: x", "x" + "\t" * 200 + " : v",
+])
+def test_the_two_step_format_list_read_is_the_one_pattern_read(line):
+    for prefix in ("", "Prev : v\n", "x\r\n"):
+        text = prefix + line
+        m = _ONE_PATTERN.match(text, len(prefix))
+        assert sp._format_list_value_start(text, len(prefix)) == (m.end() if m else None), repr(text)
 
 
 def test_the_hostile_runner_finished(hostile_run):

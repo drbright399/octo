@@ -199,7 +199,7 @@ LOCAL_BLOCK_REL = ".githooks/.local-block"
 #: memory store (the memory directory of a .claude/projects/<slug>/ entry,
 #: any prefix, '/' or '\') and a home-directory project slug on its own
 #: (-home-<user>, -Users-<user>, C--Users-<user>).
-GUARDRAILS_VERSION = 9
+GUARDRAILS_VERSION = 10
 COMMIT_MESSAGE = "<commit-message>"
 TAG_MESSAGE = "<tag-message>"
 TAG_NAME = "<tag-name>"
@@ -253,7 +253,13 @@ _MARKER = re.compile(
     re.escape(sp.ALLOW_MARKER) + r"(?:\[(?P<scope>[^\]\n]{0,400})\])?(?P<reason>[^\n]*)"
 )
 # Where a comment ends: the reason is the text before it, never the code after.
-_COMMENT_END = re.compile(r"-->|\*/|\"\"\"|\'\'\'|#\}|%\}|\*\}")
+# HTML / XML / SVG / Markdown "-->", and "--!>", which ends a comment in an
+# HTML parser too (CodeQL py/bad-tag-filter); "*/" (C-style, JSX "{/* */}");
+# docstring quotes; Jinja "#}" "%}"; Smarty "*}"; Handlebars / Mustache "}}";
+# ERB / EJS / ASP "%>". Cutting too early only shortens the reason (a marker
+# then needs its reason inside the comment), never lengthens it.
+# Case-insensitive, though no end has a letter today.
+_COMMENT_END = re.compile(r"--!?>|\*/|\"\"\"|'''|#\}|%\}|\*\}|\}\}|%>", re.I)
 _MARKER_ONLY_LINE = re.compile(
     r"^\s*(?:#|//|/\*+|\*|<!--|--|;|rem\b|::|\{/\*)?\s*" + re.escape(sp.ALLOW_MARKER), re.I
 )
@@ -1030,6 +1036,14 @@ def path_findings(
     return _shown(found, path, local)
 
 
+# Integrity hashes in dependency lockfiles: SRI strings (npm, yarn, pnpm:
+# sha512-<base64>), "sha256:<hex>" (poetry, uv) and Cargo's 64-hex checksum.
+_LOCKFILE_HASH = re.compile(
+    r"\bsha(?:1|224|256|384|512)[-:][A-Za-z0-9+/]{16,}={0,2}"
+    r"|(?<=checksum = \")[0-9a-f]{64}(?=\")"
+)
+
+
 def scan_text(
     path: str,
     text: str,
@@ -1047,6 +1061,19 @@ def scan_text(
     if local is not None:
         local_hits = [sp.Hit("local-block", m.start(), m.end(), m.group(0), False)
                       for m in local.finditer(text) if m.end() > m.start()]
+        if local_hits and sp.LOCKFILE.search(path):
+            # A dependency lockfile's integrity hashes are random base64 / hex:
+            # a short term turns up inside them by chance (one in a few hundred
+            # hashes for a 3-character term). A match wholly inside such a hash
+            # is not a name; the same term anywhere else in the lockfile (a
+            # package name, a URL) is still a finding.
+            spans = [(h.start(), h.end()) for h in _LOCKFILE_HASH.finditer(text)]
+            if spans:
+                starts_h = [s for s, _ in spans]
+                def _in_hash(hit: "sp.Hit") -> bool:
+                    i = bisect.bisect_right(starts_h, hit.start) - 1
+                    return i >= 0 and spans[i][0] <= hit.start and hit.end <= spans[i][1]
+                local_hits = [h for h in local_hits if not _in_hash(h)]
     marker_lines = text.count(sp.ALLOW_MARKER)
     if not hits and not local_hits and not marker_lines:
         return []

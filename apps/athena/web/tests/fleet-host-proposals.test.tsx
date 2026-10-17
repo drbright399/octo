@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 import type { FleetLayer, FleetSite, FleetSitesResponse, LayerName, SiteLocation } from "@/contracts/fleet";
 import type { LocationProposal, ProposalsResponse } from "@/contracts/proposals";

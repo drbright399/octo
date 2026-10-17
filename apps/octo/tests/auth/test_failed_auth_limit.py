@@ -503,6 +503,21 @@ def test_ipv6_clients_are_bucketed_by_64(env, monkeypatch):
     assert _who(tc, _token(), **{"X-Forwarded-For": "2001:db8:1:3::1"}).status_code == 401
 
 
+def test_the_cool_down_log_line_names_only_a_parsed_address(env, caplog):
+    """The address in the log line is parsed (an IPv6 client by its /64
+    bucket); a peer label that is not an address (an ASGI server's own
+    proxy-header handling can put header text there) is never printed."""
+    forged = "evil\nINFO forged line"
+    with caplog.at_level("WARNING", logger=rl.__name__):
+        _trip(env.client(DIRECT))
+        _trip(env.client(CADDY), **{"X-Forwarded-For": "2001:db8:1:2::5"})
+        _trip(env.client(forged))
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("failed-auth limit:")]
+    assert [line.split(" from ", 1)[1].split(" within ", 1)[0] for line in lines] == [
+        DIRECT, "2001:db8:1:2::/64", "<not an IP address>"]
+    assert "evil" not in caplog.text and "forged" not in caplog.text
+
+
 def test_bare_bearer_is_an_address_key_not_a_500(env):
     tc = env.client(DIRECT)
     r = tc.get("/api/v1/whoami", headers={"Authorization": "Bearer "})

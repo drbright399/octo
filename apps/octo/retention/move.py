@@ -60,6 +60,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from apps.octo import paths
 from apps.octo.ingest import arrival
 from apps.octo.ingest import telemetry as telemetry_store
 from apps.octo.ingest import tiering
@@ -208,15 +209,18 @@ def move_tenant(
     every one (the backfill), or those received at/after `since`, or those
     with an id above `since_id` (the nightly sweep's resume point — a
     fallback row always gets a new id, whatever its timestamp). Raises only
-    for a missing tenant directory; store errors — and references that
-    cannot be read — are reported in `error` (what was committed before
-    stays committed and consistent). `now` (canonical UTC ms, default the
-    clock) bounds carried arrival estimates."""
+    for a missing tenant directory, or paths.SlugError for a slug that is
+    not one or a tenant path that is not contained / runs through a symlink
+    (`paths.client_db_path`, spec §2.3 — checked before anything is
+    opened); store errors — and references that cannot be read — are
+    reported in `error` (what was committed before stays committed and
+    consistent). `now` (canonical UTC ms, default the clock) bounds carried
+    arrival estimates."""
     report = MoveReport(slug=slug, dry_run=dry_run, since=since)
     now = now or utcnow_iso()
     full = since is None and since_id is None
-    client_dir = Path(data_root) / "clients" / slug
-    events_db = client_dir / "events.db"
+    events_db = paths.client_db_path(slug, "events", root=data_root)
+    client_dir = events_db.parent
     if not events_db.exists():
         return report
     store = telemetry_store.TelemetryStore(

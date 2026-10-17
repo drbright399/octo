@@ -68,8 +68,8 @@ def _fill(unit: str, size: int) -> str:
     return (unit * (size // len(unit) + 1))[:size]
 
 
-def test_the_version_is_9():
-    assert ss.GUARDRAILS_VERSION == 9
+def test_the_version_is_at_least_9():
+    assert ss.GUARDRAILS_VERSION >= 9  # test_lockfile_integrity_local_block pins the current one
 
 
 def test_memory_path_is_a_publish_only_name_and_listed():

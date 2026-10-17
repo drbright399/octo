@@ -450,7 +450,11 @@ _SPECS: dict[str, _Spec] = {
 
 
 def _db_for(client_dir: Path, store: str) -> Path:
-    return client_dir / f"{store}.db"
+    """One of the tenant's stores, through `paths.resolve_inside` (spec
+    §2.3): contained in `client_dir` — itself from `paths.client_dir` — and
+    not a symlink. A refusal (SlugError) fails the class or the tenant that
+    asked, never reads another file."""
+    return paths.resolve_inside(client_dir, f"{store}.db")
 
 
 # ---------------------------------------------------------------------------
@@ -652,14 +656,20 @@ class RetentionJob:
         only (an events.db without the arrival index is skipped)."""
         newest: Optional[str] = None
         for slug in slugs:
-            client_dir = self.data_root / "clients" / slug
+            try:
+                client_dir = paths.client_dir(slug, root=self.data_root)
+            except paths.SlugError:
+                continue        # refused — the tenant's own pass reports it
             probes = (
                 ("telemetry", "telemetry_raw", "ingested_at"),
                 ("telemetry", "telemetry_hourly", "last_arrival"),
                 ("events", "events", arrival.COLUMN),
             )
             for store, table, column in probes:
-                path = _db_for(client_dir, store)
+                try:
+                    path = _db_for(client_dir, store)
+                except paths.SlugError:
+                    continue
                 if not path.exists():
                     continue
                 try:
@@ -955,7 +965,9 @@ class RetentionJob:
         self, result: TenantResult, policies: dict[str, ClassPolicy],
         tenant_days: Optional[int], now: datetime, dry_run: bool, report: RunReport,
     ) -> None:
-        client_dir = self.data_root / "clients" / result.slug
+        # Contained and symlink-free (spec §2.3) before anything is read: a
+        # refused directory is this tenant's error, nothing of it is touched.
+        client_dir = paths.client_dir(result.slug, root=self.data_root)
         raw_cutoff = self._raw_cutoff(policies, now)
 
         # 0) arrival — the backfill's own run (sweep over everything) is

@@ -224,16 +224,27 @@ public) as if it will be published tomorrow. Concretely:
    reworded or fixed before the push.
 7. **Public copies only via `scripts/publish_public.sh`** from a commit
    of this repo: allowlisted export (`ops/public/allowlist.txt`), local
-   replacement map, strictest scan, one orphan commit in a NEW repository
-   (noreply author, no trailers, no signature), re-scan. A human pushes
-   it after an independent second check and the operator's review. The
-   public copy is licensed Apache-2.0 (`LICENSE`, `NOTICE`). Never
-   publish on top of existing history; never patch a public repository
-   in place; never hand-make a "sanitized clone".
+   replacement map, strictest scan, one commit (noreply author, UTC
+   date, no trailers, no signature), re-scan. The first copy is one
+   orphan commit in a NEW repository (`--out`). Every later copy is one
+   commit on top of the public main (`--onto <a clean, full clone of the
+   public repository>`): its tree is exactly the new export (files the
+   export no longer holds are removed and listed), it is built and
+   re-scanned (what it adds and its message) in a scratch repository, and
+   the clone's main only fast-forwards once every check passed, so a
+   refusal leaves the clone as it was. `--onto` refuses a clone that is
+   dirty, not on main, not at its upstream, or whose history holds a
+   commit the script did not make. A human pushes it (a plain push, never
+   a force-push) after an independent second check and the operator's
+   review. The public copy is licensed Apache-2.0 (`LICENSE`, `NOTICE`).
+   Never publish this repository's history; never commit, merge or edit
+   in a public repository by hand or on the hosting site (its Dependabot
+   and code-scanning alerts are fixed here, then published); never
+   hand-make a "sanitized clone".
 8. **If something slips:** a credential is treated as exposed and
    rotated (rule 1, rule 12); a public repository is made private at
    once, then deleted and re-published clean from this tree with
-   `scripts/publish_public.sh` (a force-push leaves old commits
+   `scripts/publish_public.sh --out` (a force-push leaves old commits
    reachable).
 
 **Why:** a sanitizing pass over file contents alone is not enough. It
@@ -297,8 +308,9 @@ that tolerated work-side host names in docs.
 - **Publishing.** The public copy is Apache-2.0 and is made only with
   `scripts/publish_public.sh` from a commit of this tree (rule 13). The
   earlier public repository is deleted by Rick and the public copy is
-  re-published from this tree; a public repository is never patched in
-  place.
+  re-published from this tree; later copies go on top of it as one
+  commit each (`--onto`). A public repository is never patched in place:
+  a fix lands here first, then the next publish carries it.
 
 **Why:** the bundle is built to ship to other MSPs, and everything in
 this repository is written as if it will be published tomorrow. A host

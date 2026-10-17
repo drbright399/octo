@@ -1,5 +1,6 @@
 """scripts/publish_public.sh: allowlist export, replacement map, the --publish
-scan that refuses, and the single noreply orphan commit that is never pushed."""
+scan that refuses, the single noreply orphan commit (--out) and the one
+commit on top of a public clone's main (--onto); nothing is ever pushed."""
 from __future__ import annotations
 
 import subprocess
@@ -7,7 +8,7 @@ import subprocess
 import pytest
 
 from apps.octo.tests.security import fakes
-from apps.octo.tests.security.conftest import REPO_ROOT
+from apps.octo.tests.security.conftest import REPO_ROOT, Repo
 
 PUBLISH = REPO_ROOT / "scripts" / "publish_public.sh"
 SECRET = fakes.rand("publish-secret", 32)
@@ -190,3 +191,300 @@ def test_the_snapshot_is_dated_in_utc(source, tmp_path):
     author = next(line for line in raw.splitlines() if line.startswith("author "))
     committer = next(line for line in raw.splitlines() if line.startswith("committer "))
     assert author.endswith(" +0000") and committer.endswith(" +0000")
+
+
+# --------------------------------------------------------------------------- #
+# --onto: the next re-publish is one normal commit on top of the public main
+# --------------------------------------------------------------------------- #
+
+PUBLIC_IDENTITY = "Athena-OCTO <noreply@users.noreply.github.com>"
+
+
+@pytest.fixture
+def public_clone(source, make_repo, tmp_path):
+    """A fake public repository seeded by the first (orphan) publish, and a
+    clone of it as an operator would make one: (clone, remote)."""
+    repo, allow, block, mapping = source
+    first = tmp_path / "first"
+    proc = _publish(repo, "--allowlist", str(allow), "--local-block", str(block),
+                    "--map", str(mapping), "--out", str(first))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    remote = make_repo("public.git", bare=True)
+    subprocess.run(["git", "-C", str(first), "push", "-q", str(remote.path), "main"],
+                   env=repo.env, capture_output=True, check=True)
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(remote.path), str(clone)],
+                   env=repo.env, capture_output=True, check=True)
+    return Repo(clone, repo.env), remote
+
+
+def _onto(source, clone, *args: str, env=None, mapping=None) -> subprocess.CompletedProcess:
+    repo, allow, block, default_map = source
+    return subprocess.run(
+        ["bash", str(PUBLISH), "--repo", str(repo.path), "--allowlist", str(allow),
+         "--local-block", str(block), "--map", str(mapping or default_map),
+         "--onto", str(clone.path), *args],
+        cwd=repo.path, env=dict(repo.env, **(env or {})), capture_output=True, text=True)
+
+
+def _files(path) -> dict[str, bytes]:
+    """Every file under ``path``, .git included: refs, index, objects."""
+    return {str(p.relative_to(path)): p.read_bytes() for p in path.rglob("*") if p.is_file()}
+
+
+def _head(repo) -> str:
+    return repo.git("rev-parse", "HEAD").stdout.strip()
+
+
+def _next_source_commit(repo) -> None:
+    repo.write("README.md", "# Widget\nUpdated readme for the Zebra Clinic build.\n")
+    repo.write("src/feature.py", "VALUE = 1\n")
+    repo.git("rm", "-q", "src/app.py")
+    _commit_all(repo, "next")
+
+
+def test_onto_adds_one_commit_whose_tree_is_the_export(source, public_clone):
+    repo = source[0]
+    clone, remote = public_clone
+    first = _head(clone)
+    _next_source_commit(repo)
+    proc = _onto(source, clone, "--remote-url", "git@github.com:example/widget.git",
+                 env={"TZ": "America/Chicago"})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    # One new commit on main, its only parent the public main it started from.
+    assert clone.git("symbolic-ref", "--short", "HEAD").stdout.strip() == "main"
+    assert clone.git("rev-list", "--count", "HEAD").stdout.strip() == "2"
+    assert clone.git("log", "-1", "--format=%P").stdout.strip() == first
+    # Its tree is exactly the export: mapped, the deleted file gone, nothing else.
+    assert clone.git("ls-files").stdout.split() == [
+        "README.md", "src/example_clinic_adapter.py", "src/feature.py"]
+    assert (clone.path / "README.md").read_text() == (
+        "# Widget\nUpdated readme for the Example Clinic build.\n")
+    assert not (clone.path / "src" / "app.py").exists()
+    assert clone.git("status", "--porcelain", "--untracked-files=all").stdout == ""
+    # Neutral identity, UTC dates, no trailers.
+    assert clone.git("log", "-1", "--format=%an <%ae>|%cn <%ce>").stdout.strip() == (
+        f"{PUBLIC_IDENTITY}|{PUBLIC_IDENTITY}")
+    raw = clone.git("cat-file", "commit", "HEAD").stdout
+    header, _, body = raw.partition("\n\n")
+    assert "\ngpgsig " not in header
+    for line in header.splitlines():
+        if line.startswith(("author ", "committer ")):
+            assert line.endswith(" +0000"), line
+    assert body.startswith("Public snapshot ") and ":" not in body
+    # Never pushed; the removal is listed; the push is a plain fast-forward.
+    assert remote.git("rev-parse", "main").stdout.strip() == first
+    assert "NOT pushed" in proc.stdout and "1 added, 1 changed, 1 removed" in proc.stdout
+    assert "removed (on the public main, not in this export" in proc.stdout
+    assert "\n    src/app.py\n" in proc.stdout
+    clone_dir = clone.path.resolve()
+    assert f'git -C "{clone_dir}" push git@github.com:example/widget.git main' in proc.stdout
+    assert "--force" not in proc.stdout and int(repo.git("rev-list", "--count", "--all").stdout) == 2
+
+    # The operator pushes it; the next publish stacks on top again.
+    clone.git("push", "-q", "origin", "main")
+    second = _head(clone)
+    repo.write("src/feature.py", "VALUE = 2\n")
+    _commit_all(repo, "again")
+    proc = _onto(source, clone)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert clone.git("rev-list", "--count", "HEAD").stdout.strip() == "3"
+    assert clone.git("log", "-1", "--format=%P").stdout.strip() == second
+    assert "0 added, 1 changed, 0 removed" in proc.stdout and "removed (" not in proc.stdout
+    assert f'git -C "{clone_dir}" push origin main' in proc.stdout
+    assert remote.git("rev-parse", "main").stdout.strip() == second
+
+
+def test_onto_tree_keeps_files_the_exported_gitignore_names(source, public_clone):
+    """The tree is the export, not what a .gitignore in it would let through."""
+    repo = source[0]
+    clone, _ = public_clone
+    repo.write("src/.gitignore", "*.log\n")
+    repo.write("src/sample.log", "synthetic sample line\n")
+    repo.git("add", "-f", "src/.gitignore", "src/sample.log")
+    repo.git("commit", "-q", "-m", "sample")
+    proc = _onto(source, clone)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    tracked = clone.git("ls-files").stdout.split()
+    assert "src/.gitignore" in tracked and "src/sample.log" in tracked
+    assert clone.git("status", "--porcelain", "--untracked-files=all").stdout == ""
+
+
+def test_onto_dry_run_shows_the_change_and_writes_nothing(source, public_clone):
+    repo = source[0]
+    clone, _ = public_clone
+    _next_source_commit(repo)
+    before = _files(clone.path)
+    proc = _onto(source, clone, "--dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "  src/feature.py\n" in proc.stdout and "Scan: clean" in proc.stdout
+    assert "1 added, 1 changed, 1 removed" in proc.stdout and "\n    src/app.py\n" in proc.stdout
+    assert _files(clone.path) == before
+
+
+def test_onto_with_nothing_new_commits_nothing(source, public_clone):
+    clone, _ = public_clone
+    before = _files(clone.path)
+    proc = _onto(source, clone)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Nothing to publish" in proc.stdout
+    assert _files(clone.path) == before
+
+
+def test_onto_refused_scan_leaves_the_clone_untouched(source, public_clone, tmp_path):
+    repo = source[0]
+    clone, _ = public_clone
+    _next_source_commit(repo)
+    before = _files(clone.path)
+    proc = _onto(source, clone, mapping=tmp_path / "no-map")  # the client name stays: refuse
+    assert proc.returncode == 1 and "REFUSED" in proc.stderr and "is as it was" in proc.stderr
+    assert "[local-block]" in proc.stdout and "Zebra Clinic" not in proc.stdout
+    assert _files(clone.path) == before
+
+
+def test_onto_refusal_at_the_commit_rescan_leaves_the_clone_untouched(source, public_clone):
+    """The export is clean but the commit is not (here: its message holds a
+    local term): refused after the commit was built, before the clone moved."""
+    repo, _, block, _ = source
+    clone, _ = public_clone
+    _next_source_commit(repo)
+    block.write_text(block.read_text() + "Public snapshot\n")
+    before = _files(clone.path)
+    proc = _onto(source, clone)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "did not re-scan clean" in proc.stderr and "is as it was" in proc.stderr
+    # a finding in the message, not a scanner error
+    assert "<commit-message>" in proc.stdout and "[local-block]" in proc.stdout
+    assert _files(clone.path) == before  # no ref, no index, no object written
+
+
+# What a commit this script makes looks like (identity, UTC dates). The git
+# identity comes from these variables: they override any `-c user.name`.
+_SNAPSHOT = {
+    "GIT_AUTHOR_NAME": "Athena-OCTO", "GIT_AUTHOR_EMAIL": "noreply@users.noreply.github.com",
+    "GIT_COMMITTER_NAME": "Athena-OCTO", "GIT_COMMITTER_EMAIL": "noreply@users.noreply.github.com",
+    "GIT_AUTHOR_DATE": "@946684800 +0000", "GIT_COMMITTER_DATE": "@946684800 +0000",
+}
+_SNAPSHOT_MESSAGE = "Public snapshot 2000-01-01"
+
+
+def _as(clone, **env: str):
+    """The clone, with git run under ``env`` (the snapshot shape by default)."""
+    return Repo(clone.path, dict(clone.env, **dict(_SNAPSHOT, **env)))
+
+
+def _changed_in_place(message: str = _SNAPSHOT_MESSAGE, **env: str):
+    """A commit on the public main that differs from one this script makes
+    only in what ``message`` / ``env`` change (pushed, so the clone is at its
+    upstream)."""
+    def setup(clone):
+        clone.write("HOTFIX.md", "edited on the hosting site\n")
+        clone.git("add", "-A")
+        _as(clone, **env).git("commit", "-q", "--cleanup=verbatim", "-m", message)
+        clone.git("push", "-q", "origin", "main")
+    return setup
+
+
+def _merged_in_place(clone):
+    """A merge commit on the public main, otherwise shaped like a snapshot."""
+    snap = _as(clone)
+    clone.git("switch", "-q", "-c", "side")
+    clone.write("SIDE.md", "side\n")
+    clone.git("add", "-A")
+    snap.git("commit", "-q", "-m", _SNAPSHOT_MESSAGE)
+    clone.git("switch", "-q", "main")
+    clone.write("MAIN.md", "main\n")
+    clone.git("add", "-A")
+    snap.git("commit", "-q", "-m", _SNAPSHOT_MESSAGE)
+    snap.git("merge", "-q", "--no-ff", "-m", _SNAPSHOT_MESSAGE, "side")
+    clone.git("branch", "-q", "-D", "side")
+    clone.git("push", "-q", "origin", "main")
+
+
+def _tag_shadows_main(clone):
+    """A foreign commit on main, and a local tag named "main" on the clean
+    commit before it (that would shadow the branch in `git log main`): the
+    ambiguous name is refused before any history is read."""
+    _changed_in_place("hotfix")(clone)
+    clone.git("tag", "main", "HEAD~1")
+
+
+@pytest.mark.parametrize("setup,expected", [
+    (lambda c: c.write("notes.txt", "scratch\n"), "modified or untracked files"),
+    (lambda c: c.write("README.md", "edited by hand\n"), "modified or untracked files"),
+    (lambda c: c.git("switch", "-q", "-c", "feature"), "is not on main"),
+    (lambda c: (c.write("x.md", "x\n"), c.git("add", "x.md"),
+                _as(c).git("commit", "-q", "-m", _SNAPSHOT_MESSAGE)), "not at its upstream"),
+    (lambda c: c.git("branch", "-q", "--unset-upstream"), "has no upstream"),
+    # Each differs from a script-made commit in one property only.
+    (_changed_in_place(GIT_AUTHOR_EMAIL="alice@example.com",
+                       GIT_COMMITTER_EMAIL="alice@example.com"),
+     "a commit this script did not make"),
+    (_changed_in_place("Bump a dependency"), "a commit this script did not make"),
+    (_changed_in_place(_SNAPSHOT_MESSAGE + "\n\nwith a body"), "a commit this script did not make"),
+    (_changed_in_place(_SNAPSHOT_MESSAGE + "\n\nSigned-off-by: Bot <bot@users.noreply.github.com>"),
+     "a commit this script did not make"),
+    # a web edit: the author is a user, the committer the hosting site
+    (_changed_in_place(GIT_COMMITTER_NAME="Bot", GIT_COMMITTER_EMAIL="bot@users.noreply.github.com"),
+     "a commit this script did not make"),
+    (_changed_in_place(GIT_AUTHOR_DATE="@946684800 -0500", GIT_COMMITTER_DATE="@946684800 -0500"),
+     "a commit this script did not make"),
+    (_merged_in_place, "a commit this script did not make"),
+    (_tag_shadows_main, "is not on main"),
+])
+def test_onto_refuses_a_clone_that_is_not_a_clean_public_main(source, public_clone, setup,
+                                                              expected):
+    repo = source[0]
+    clone, _ = public_clone
+    _next_source_commit(repo)
+    setup(clone)
+    head = _head(clone)
+    before = _files(clone.path)
+    proc = _onto(source, clone)
+    assert proc.returncode == 2 and expected in proc.stderr, proc.stdout + proc.stderr
+    assert _head(clone) == head and _files(clone.path) == before
+
+
+def test_onto_history_check_is_on_the_commit_shape(source, public_clone):
+    """Control for the cases above: a commit with exactly the snapshot shape
+    passes the history check, so each refusal there is the one property that
+    differs."""
+    repo = source[0]
+    clone, _ = public_clone
+    _next_source_commit(repo)
+    _changed_in_place()(clone)
+    head = _head(clone)
+    proc = _onto(source, clone)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert clone.git("log", "-1", "--format=%P").stdout.strip() == head
+    assert "HOTFIX.md" in proc.stdout  # not in the export: removed, and listed
+    assert not (clone.path / "HOTFIX.md").exists()
+
+
+def test_onto_refuses_a_shallow_clone(source, public_clone, tmp_path):
+    clone, remote = public_clone
+    shallow = tmp_path / "shallow"
+    subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{remote.path}", str(shallow)],
+                   env=clone.env, capture_output=True, check=True)
+    proc = _onto(source, Repo(shallow, clone.env))
+    assert proc.returncode == 2 and "shallow or partial clone" in proc.stderr, proc.stderr
+
+
+def test_onto_refuses_a_clone_of_the_private_repository(source, tmp_path):
+    repo = source[0]
+    private_clone = tmp_path / "private-clone"
+    subprocess.run(["git", "clone", "-q", str(repo.path), str(private_clone)],
+                   env=repo.env, capture_output=True, check=True)
+    proc = _onto(source, Repo(private_clone, repo.env))
+    assert proc.returncode == 2 and "holds commits of this repository" in proc.stderr
+
+
+def test_onto_and_out_are_alternatives_and_onto_stays_outside_the_repo(source, public_clone,
+                                                                       tmp_path):
+    repo = source[0]
+    clone, _ = public_clone
+    proc = _onto(source, clone, "--out", str(tmp_path / "other"))
+    assert proc.returncode == 2 and "alternatives" in proc.stderr
+    proc = _onto(source, Repo(repo.path, repo.env))
+    assert proc.returncode == 2 and "outside the repository" in proc.stderr

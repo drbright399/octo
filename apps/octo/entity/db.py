@@ -6,8 +6,11 @@ for that tenant (migration 040, `-- @target: entities`).
     first table, WAL). The tenant directory must exist — a file is never
     created for a tenant that was not provisioned.
   * `TenantDB.for_tenant(slug)` is the only way in. It validates the slug,
-    resolves the path and REFUSES anything outside `clients/<slug>/` (a
-    symlink, a traversal): there is no API that takes two slugs or a path.
+    builds the path through `paths.client_db_path` (the one containment
+    check: realpath, prefix guard, no symlink below the data root) and
+    REFUSES anything outside `clients/<slug>/` (a symlink, a traversal) —
+    again on every connection: there is no API that takes two slugs or a
+    path.
   * `read()` answers None when the file does not exist or has no schema yet
     (a tenant created before 040): callers say "unresolved", never a 500
     (the lazy-migration rule: probe sqlite_master on every read path).
@@ -33,6 +36,16 @@ _ensured: set[str] = set()
 
 class EntityPathError(ValueError):
     """A path that is not THIS tenant's entities.db."""
+
+
+def _contained(slug: str) -> Path:
+    """`<data_root>/clients/<slug>/entities.db` through `paths.client_db_path`
+    (slug validated, realpath'd, contained, symlink-free below the data
+    root). A refusal is this module's EntityPathError, as before."""
+    try:
+        return paths.client_db_path(slug, TARGET)
+    except paths.SlugError as exc:
+        raise EntityPathError(str(exc)) from None
 
 
 def migration_numbers() -> list[int]:
@@ -101,8 +114,11 @@ class TenantDB:
     @classmethod
     def for_tenant(cls, slug: str) -> "TenantDB":
         paths.validate_slug(slug)
-        tenant_dir = (paths.data_root() / "clients" / slug)
-        path = tenant_dir / DB_NAME
+        # The path is never hand-built from the slug: `client_db_path` is the
+        # one containment check (spec §2.3 — realpath, prefix guard under the
+        # data root, no symlink below it), applied before anything touches
+        # the filesystem through it.
+        path = _contained(slug)
         cls.guard(slug, path)
         return cls(slug, path)
 
@@ -110,17 +126,16 @@ class TenantDB:
     def guard(slug: str, path: Path) -> None:
         """Refuse a path that is not `<data_root>/clients/<slug>/entities.db`
         — after resolving symlinks — or that traverses a symlink."""
-        root = paths.data_root().resolve()
-        want_dir = (root / "clients" / slug)
         if path.name != DB_NAME:
             raise EntityPathError(f"not an {DB_NAME}: {path.name!r}")
+        want = _contained(slug)
         cur = Path(path.anchor)
         for part in path.parts[1:]:
             cur = cur / part
             if cur.is_symlink():
                 raise EntityPathError(f"symlink refused at {cur}")
         resolved = path.resolve()
-        if resolved.parent != want_dir.resolve():
+        if resolved != want:
             raise EntityPathError(
                 f"{resolved} is not the entities.db of tenant {slug!r}")
 
