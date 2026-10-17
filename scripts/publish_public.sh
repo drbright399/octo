@@ -54,10 +54,14 @@
 #   scripts/publish_public.sh --onto ../public-clone
 #   git -C ../public-clone show --stat HEAD     # review, then push it yourself
 #
-# Identity: PUBLISH_AUTHOR_NAME (default "Athena-OCTO"; letters, digits, space,
+# Identity (REQUIRED, no default): PUBLISH_AUTHOR_NAME (letters, digits, space,
 # . _ -; never the operator's git user.name; no local-block term) and
-# PUBLISH_AUTHOR_EMAIL (default "noreply@users.noreply.github.com"; must be
-# <name>@users.noreply.github.com, no local-block term). The commit is dated in
+# PUBLISH_AUTHOR_EMAIL: the maintainer's ID-based GitHub noreply address,
+# <numeric id>+<login>@users.noreply.github.com. A bare <name>@users.noreply.github.com
+# is refused: GitHub credits such commits to whichever account is called <name>
+# (the 2026-10-17 publish credited a stranger's "noreply" account that way). The
+# ID-based form is tied to one account and cannot be claimed by anyone else. The
+# commit is dated in
 # UTC (+0000) so it does not carry the operator's time zone.
 set -euo pipefail
 
@@ -121,10 +125,12 @@ if [[ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]]; then
   echo "publish_public: note: uncommitted changes are NOT published (exporting $ref = ${commit_sha:0:12})" >&2
 fi
 
-author_name="${PUBLISH_AUTHOR_NAME:-Athena-OCTO}"
-author_email="${PUBLISH_AUTHOR_EMAIL:-noreply@users.noreply.github.com}"
-[[ "$author_email" =~ ^[A-Za-z0-9._+-]+@users\.noreply\.github\.com$ ]] || \
-  die "PUBLISH_AUTHOR_EMAIL must be a GitHub noreply address (<name>@users.noreply.github.com)"
+author_name="${PUBLISH_AUTHOR_NAME:-}"
+author_email="${PUBLISH_AUTHOR_EMAIL:-}"
+[[ -n "$author_name" && -n "$author_email" ]] || \
+  die "set PUBLISH_AUTHOR_NAME and PUBLISH_AUTHOR_EMAIL (the maintainer's ID-based GitHub noreply address, <id>+<login>@users.noreply.github.com); there is no default"
+[[ "$author_email" =~ ^[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com$ ]] || \
+  die "PUBLISH_AUTHOR_EMAIL must be an ID-based GitHub noreply address (<id>+<login>@users.noreply.github.com); a bare <name>@users.noreply.github.com credits whoever owns the account <name>"
 [[ "$author_name" =~ ^[A-Za-z0-9._\ -]{1,64}$ ]] || \
   die "PUBLISH_AUTHOR_NAME may only use letters, digits, space, '.', '_' and '-'"
 operator_name="$(git -C "$repo" config user.name || true)"

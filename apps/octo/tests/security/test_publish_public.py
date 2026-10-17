@@ -10,6 +10,16 @@ import pytest
 from apps.octo.tests.security import fakes
 from apps.octo.tests.security.conftest import REPO_ROOT, Repo
 
+
+# The publish identity is required (no default): a fictional, ID-based GitHub
+# noreply address, the only form the script accepts.
+_ID_NAME = "Example Maintainer"
+_ID_EMAIL = "12345678+example-maintainer@users.noreply.github.com"
+
+
+def _env(repo):
+    return dict(repo.env, PUBLISH_AUTHOR_NAME=_ID_NAME, PUBLISH_AUTHOR_EMAIL=_ID_EMAIL)
+
 PUBLISH = REPO_ROOT / "scripts" / "publish_public.sh"
 SECRET = fakes.rand("publish-secret", 32)
 
@@ -36,7 +46,7 @@ def source(make_repo, tmp_path):
 
 def _publish(repo, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", str(PUBLISH), "--repo", str(repo.path), *args],
-                          cwd=repo.path, env=repo.env, capture_output=True, text=True)
+                          cwd=repo.path, env=_env(repo), capture_output=True, text=True)
 
 
 def test_dry_run_lists_only_allowlisted_files(source):
@@ -86,8 +96,8 @@ def test_publish_makes_one_noreply_orphan_commit_and_never_pushes(source, tmp_pa
 
     assert run("rev-list", "--count", "--all").strip() == "1"
     assert run("log", "-1", "--format=%an <%ae>|%cn <%ce>|%P").strip() == (
-        "Athena-OCTO <noreply@users.noreply.github.com>|"
-        "Athena-OCTO <noreply@users.noreply.github.com>|")  # no parent: an orphan
+        f"{_ID_NAME} <{_ID_EMAIL}>|"
+        f"{_ID_NAME} <{_ID_EMAIL}>|")  # no parent: an orphan
     body = run("log", "-1", "--format=%B")
     assert body.strip().startswith("Public snapshot") and ":" not in body  # no trailers
     assert run("ls-files").split() == ["README.md", "src/app.py", "src/example_clinic_adapter.py"]
@@ -161,8 +171,11 @@ def test_publish_refuses_a_binary_that_is_not_an_image_or_a_font(source):
 
 
 @pytest.mark.parametrize("env,expected", [
-    ({"PUBLISH_AUTHOR_EMAIL": "rick.noreply@" + "clientcorp.com"}, "GitHub noreply address"),
-    ({"PUBLISH_AUTHOR_EMAIL": "zebra-clinic@users.noreply.github.com"}, "local-block term"),
+    ({"PUBLISH_AUTHOR_EMAIL": "rick.noreply@" + "clientcorp.com"}, "ID-based GitHub noreply address"),
+    ({"PUBLISH_AUTHOR_EMAIL": "4242+zebra-clinic@users.noreply.github.com"}, "local-block term"),
+    ({"PUBLISH_AUTHOR_EMAIL": "noreply@users.noreply.github.com"}, "ID-based GitHub noreply address"),
+    ({"PUBLISH_AUTHOR_EMAIL": ""}, "there is no default"),
+    ({"PUBLISH_AUTHOR_NAME": ""}, "there is no default"),
     ({"PUBLISH_AUTHOR_NAME": "Zebra Clinic Bot"}, "local-block term"),
     ({"PUBLISH_AUTHOR_NAME": "Alice Example"}, "operator's own git user.name"),
     ({"PUBLISH_AUTHOR_NAME": "Bot <x@y>"}, "may only use"),
@@ -174,7 +187,7 @@ def test_publish_identity_must_be_neutral(source, tmp_path, env, expected):
     proc = subprocess.run(["bash", str(PUBLISH), "--repo", str(repo.path), "--allowlist", str(allow),
                            "--local-block", str(block), "--map", str(mapping),
                            "--out", str(tmp_path / "public")],
-                          env=dict(repo.env, **env), capture_output=True, text=True)
+                          env=dict(_env(repo), **env), capture_output=True, text=True)
     assert proc.returncode == 2 and expected in proc.stderr, proc.stderr
     assert not (tmp_path / "public").exists()
 
@@ -184,7 +197,7 @@ def test_the_snapshot_is_dated_in_utc(source, tmp_path):
     out = tmp_path / "public"
     proc = subprocess.run(["bash", str(PUBLISH), "--repo", str(repo.path), "--allowlist", str(allow),
                            "--local-block", str(block), "--map", str(mapping), "--out", str(out)],
-                          env=dict(repo.env, TZ="America/Chicago"), capture_output=True, text=True)
+                          env=dict(_env(repo), TZ="America/Chicago"), capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     raw = subprocess.run(["git", "-C", str(out), "cat-file", "commit", "HEAD"], env=repo.env,
                          capture_output=True, text=True, check=True).stdout
@@ -197,7 +210,7 @@ def test_the_snapshot_is_dated_in_utc(source, tmp_path):
 # --onto: the next re-publish is one normal commit on top of the public main
 # --------------------------------------------------------------------------- #
 
-PUBLIC_IDENTITY = "Athena-OCTO <noreply@users.noreply.github.com>"
+PUBLIC_IDENTITY = f"{_ID_NAME} <{_ID_EMAIL}>"
 
 
 @pytest.fixture
@@ -224,7 +237,7 @@ def _onto(source, clone, *args: str, env=None, mapping=None) -> subprocess.Compl
         ["bash", str(PUBLISH), "--repo", str(repo.path), "--allowlist", str(allow),
          "--local-block", str(block), "--map", str(mapping or default_map),
          "--onto", str(clone.path), *args],
-        cwd=repo.path, env=dict(repo.env, **(env or {})), capture_output=True, text=True)
+        cwd=repo.path, env=dict(_env(repo), **(env or {})), capture_output=True, text=True)
 
 
 def _files(path) -> dict[str, bytes]:
@@ -362,8 +375,8 @@ def test_onto_refusal_at_the_commit_rescan_leaves_the_clone_untouched(source, pu
 # What a commit this script makes looks like (identity, UTC dates). The git
 # identity comes from these variables: they override any `-c user.name`.
 _SNAPSHOT = {
-    "GIT_AUTHOR_NAME": "Athena-OCTO", "GIT_AUTHOR_EMAIL": "noreply@users.noreply.github.com",
-    "GIT_COMMITTER_NAME": "Athena-OCTO", "GIT_COMMITTER_EMAIL": "noreply@users.noreply.github.com",
+    "GIT_AUTHOR_NAME": _ID_NAME, "GIT_AUTHOR_EMAIL": _ID_EMAIL,
+    "GIT_COMMITTER_NAME": _ID_NAME, "GIT_COMMITTER_EMAIL": _ID_EMAIL,
     "GIT_AUTHOR_DATE": "@946684800 +0000", "GIT_COMMITTER_DATE": "@946684800 +0000",
 }
 _SNAPSHOT_MESSAGE = "Public snapshot 2000-01-01"
