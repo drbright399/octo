@@ -369,7 +369,7 @@ def test_a_zone_id_is_not_an_address(value):
 
 
 def test_a_zone_id_never_becomes_the_client():
-    trusted = cip.parse_trusted_proxies(PROXY_NET)[0]
+    trusted = cip.parse_proxy_setting(PROXY_NET)[0]
     assert cip.resolve_client_ip(CADDY, "2001:db8::7%any text", trusted) == CADDY
     assert cip.resolve_client_ip(CONSOLE, f"{CLIENT_A}, 2001:db8::7%x, {CADDY}", trusted) == CADDY
     assert cip.unverified_forwarded_hint(f"{CLIENT_A}, 2001:db8::7%x") == CLIENT_A

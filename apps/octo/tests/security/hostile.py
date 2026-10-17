@@ -31,7 +31,13 @@ later is covered without editing this file:
   stream's cap) through redact and the normaliser;
 * 50 kB lines, and each detector's heaviest stretched to 200 kB;
 * the whole pipeline: find_hits, redact, the Datto job-output normaliser and
-  the scanner's report (scan_text: its masked excerpt of the line).
+  the scanner's report (scan_text: its masked excerpt of the line);
+* every other module-level regex of secret_patterns (the checks' and
+  redaction's helpers: the Format-List value column, the wrapped tail...)
+  SEARCHED on 50 kB runs, blank runs included: a regex that is linear only
+  when matched at a line start (an unbounded ``[ \\t]*`` before a part that
+  can fail, CodeQL py/polynomial-redos) is caught here, and Format-List
+  property and continuation lines go through the whole pipeline.
 
 Every value here is synthetic.
 """
@@ -39,6 +45,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import sys
 import time
 from typing import Iterable, Iterator
@@ -77,7 +84,16 @@ OPTION_HEADS = ("--key=", "--license ", "--password=", "--token ", "/ACCT_KEY=",
 PIPELINE_SHAPES = (
     ("pem-headers", "-----BEGIN " + "PRIVATE KEY-----\n/\n"),
     ("jwt-prefix-window", "eyJ" * 1300 + " " + " ".join(PW * 3 + str(i) for i in range(90)) + " "),
+    # Format-List: a value at the end of a tab-indented property line (the
+    # value column is read for it), and a value wrapped onto continuation
+    # lines under blank-indented lines that are no property.
+    ("format-list-tab-indent", "\t" * 4000 + "AccountKey :\t" + PW + "\n"),
+    ("format-list-continuations", "PathName : x --license_key " + PW * 3 + "\n"
+     + (" " * 11 + PW + "\n") * 16 + "\t" * 3000 + "x\t" * 60 + "\n"),
 )
+#: Searched with RUNS by every helper regex (helper_inputs): blank runs, and
+#: a name before blanks and a colon (the Format-List ReDoS shapes).
+HELPER_RUNS = ("\t", " ", " \t", "\t\n", "a\t", "a :", "a\t:", "x\n")
 # How many seeds per detector (see seed_list).
 SEEDS = 5
 
@@ -321,6 +337,24 @@ def program_regexes(sp) -> list[tuple[str, object]]:
     return out
 
 
+def helper_regexes(sp) -> list[tuple[str, object]]:
+    """``(name, compiled)`` for every module-level regex of secret_patterns
+    that is no detector's pattern (a regex added there later is covered
+    without editing this file)."""
+    detectors = {id(d.pattern) for d in sp.DETECTORS}
+    return [(f"helper:{name}", rx) for name, rx in sorted(vars(sp).items())
+            if isinstance(rx, re.Pattern) and id(rx) not in detectors]
+
+
+def helper_inputs(rx, label: str) -> list[tuple[str, str]]:
+    """50 kB runs of RUNS and HELPER_RUNS, then the regex's own seeds'
+    shapes at 5 kB (as for the program checks)."""
+    out = [(f"run{run!r}", _fill(run, SIZE)) for run in RUNS + HELPER_RUNS]
+    for seed in seed_list(rx, (), label):
+        out += [(f"{seed}:{name}", text) for name, text in shapes(seed, 5_000)]
+    return out
+
+
 def program_inputs(rx, label: str) -> list[tuple[str, str]]:
     seeds = seed_list(rx, (), label)
     out: list[tuple[str, str]] = []
@@ -354,7 +388,8 @@ def _cpu(fn, *args) -> float:
 
 def run(only: set[str] | None = None) -> None:
     """Time every call, one JSON line each, flushed (a hang is attributed:
-    its "start" line has no result line). Each detector alone on each of its
+    its "start" line has no result line). The program checks and the helper
+    regexes, searched on their hostile lines. Each detector alone on each of its
     hostile lines (scan and redact); then the whole pipeline (find_hits with
     the publish-only detectors, redact, the Datto job-output normaliser, the
     scanner's report with its masked excerpt) on
@@ -390,6 +425,11 @@ def run(only: set[str] | None = None) -> None:
         if not only or name in only:
             for label, text in program_inputs(rx, name):
                 timed(name, label, "program", text, rx.search, text)
+    # Searched, never matched at a start: the worst way a regex is applied.
+    for name, rx in helper_regexes(sp):
+        if not only or name in only:
+            for label, text in helper_inputs(rx, name):
+                timed(name, label, "search", text, rx.search, text)
     heaviest: list[tuple[float, str, str, str]] = []
     for d in sp.DETECTORS:
         if only and d.name not in only:

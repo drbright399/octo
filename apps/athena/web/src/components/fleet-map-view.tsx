@@ -24,7 +24,12 @@
 import {
   type FC, useEffect, useMemo, useRef, useState,
 } from "react";
-import maplibregl from "maplibre-gl";
+// maplibre-gl v6 is ESM-only with no default export: namespace import.
+import * as maplibregl from "maplibre-gl";
+// v6 resolves its worker from `import.meta.url`, which a bundler rewrites,
+// so Vite must emit the worker as a same-origin asset and hand MapLibre
+// its URL (`?worker&url`). Same origin = covered by `worker-src 'self'`.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { Protocol } from "pmtiles";
 
 // maplibre-gl.css is eager-imported from src/main.tsx — see the note
@@ -124,12 +129,15 @@ export function pinBounds(pins: ReadonlyArray<{ lat: number; lng: number }>):
 const NO_BUOYS: ReadonlyArray<BuoyMarker> = [];
 
 
-// Register the pmtiles:// protocol with MapLibre once per page lifetime.
+// Point MapLibre at the bundled worker and register the pmtiles://
+// protocol, once per page lifetime. Both must happen before the first
+// `new Map()` (the worker pool spins up on construction).
 // (Multiple FleetMapView mounts share the registration — re-adding is a
 // no-op per the pmtiles client.)
 let _protocolRegistered = false;
 function ensurePmtilesProtocol(): void {
   if (_protocolRegistered) return;
+  maplibregl.setWorkerUrl(maplibreWorkerUrl);
   const protocol = new Protocol();
   maplibregl.addProtocol("pmtiles", protocol.tile);
   _protocolRegistered = true;

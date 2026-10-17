@@ -717,7 +717,10 @@ def run_extraction(
     Opens its own connections per tenant. Caller is responsible for
     choosing tenant_slugs (typically: all active tenants from the
     registry, with a per-tenant opt-out filter applied — that filter
-    is a future enhancement; v0 trusts the caller's slug list).
+    is a future enhancement; v0 trusts the caller's slug list). A slug
+    the path layer refuses (not a slug, escaping the data root, through a
+    symlink) is that tenant's `error` — like missing DB files — and the
+    other tenants still run.
 
     Thin orchestrator — the real per-tenant logic lives in
     `run_extraction_for_tenant`. This exists so the scheduled-job
@@ -745,16 +748,19 @@ def run_extraction(
     global_audit_conn = connect(global_audit_path)
     try:
         for slug in tenant_slugs:
-            events_path = (
-                octo_paths.client_db_path(slug, "events")
-                if data_root is None
-                else data_root / "clients" / slug / "events.db"
-            )
-            tenant_audit_path = (
-                octo_paths.client_db_path(slug, "audit")
-                if data_root is None
-                else data_root / "clients" / slug / "audit.db"
-            )
+            # Both through the path layer's containment check (spec §2.3:
+            # slug validated, realpath'd, under the data root, no symlink),
+            # whichever data root is in use — before anything touches them.
+            try:
+                events_path = octo_paths.client_db_path(slug, "events", root=data_root)
+                tenant_audit_path = octo_paths.client_db_path(slug, "audit", root=data_root)
+            except octo_paths.SlugError as exc:
+                results[slug] = ExtractionStats(
+                    tenant_slug=slug,
+                    status="error",
+                    error=f"tenant path refused: {exc}",
+                )
+                continue
             if not events_path.exists() or not tenant_audit_path.exists():
                 results[slug] = ExtractionStats(
                     tenant_slug=slug,

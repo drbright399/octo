@@ -176,6 +176,33 @@ def test_the_reason_is_the_comment_not_the_code_after_it():
     assert ss.scan_text("web/x.js", ok) == []
 
 
+@pytest.mark.parametrize("opening, closing", [
+    ("<!--", "-->"), ("<!--", "--!>"),      # "--!>" ends an HTML comment too
+    ("<!--", "--!>\n"), ("{{!--", "--}}"), ("{{!", "}}"), ("<%#", "%>"), ("{#", "#}"),
+    ("{%", "%}"), ("{*", "*}"), ("{/*", "*/}"),
+])
+def test_the_reason_is_the_comment_whatever_form_ends_it(opening, closing):
+    """CodeQL py/bad-tag-filter: a comment end the scanner did not know made
+    the code after the comment count as the marker's reason."""
+    value = fakes.rand("rt-comment-end", 28)
+    code = f'const apiKey = "{value}";'
+    for path in ("web/x.html", "docs/x.md", "web/x.tsx"):
+        bare = f"{opening} {MARK} {closing} {code}\n"
+        names = _detectors(ss.scan_text(path, bare))
+        assert "allow-marker-without-reason" in names and "secret-assignment" in names, (path, bare)
+        ok = f"{opening} {MARK} generated in the test {closing} {code}\n"
+        if not closing.endswith("\n"):
+            assert ss.scan_text(path, ok) == [], (path, ok)
+
+
+def test_a_reason_is_cut_at_the_first_comment_end():
+    # No comment end has a letter, so the regex's re.I changes nothing today.
+    assert ss._marker_reason(" fixture value --!> const apiKey = 1") == "fixture value"
+    assert ss._marker_reason(" fixture value --> x") == "fixture value"
+    assert ss._marker_reason(": -- fixture -- value -- ") == "fixture -- value"
+    assert ss._marker_reason(" fixture value -- !> x") == "fixture value -- !> x"  # not an end
+
+
 def test_an_old_marker_does_not_approve_a_new_value_below_it(make_repo):
     repo = make_repo()
     marker = f"# {MARK} fixture value for the vault test\n"

@@ -19,12 +19,16 @@ psutil==7.2.2
 # up (currently using stdlib logging via uvicorn's --access-log).
 # Bedrock API surface (apps.octo.api:create_app) — auth (TOTP + WebAuthn),
 # credentials vault (Fernet), and the requests/urllib3-based adapters.
-# Pins match the legacy host's production venv as of 2026-09-19.
+# Pins match the legacy host's production venv as of 2026-09-19, except
+# the 2026-10-17 security bumps: cryptography 47.0.0 -> 50.0.2 (OpenSSL in
+# wheels, X.509 verifier, PKCS#7 Bleichenbacher; needs >= 50.0.0) and
+# urllib3 2.7.0 -> 2.8.0 (HTTPS proxy TLS, unbounded chunk line, deflate
+# loop). webauthn's transitive pyOpenSSL resolves to 26.4 (cryptography <51).
 pyotp==2.9.0
 webauthn==2.7.1
-cryptography==47.0.0
+cryptography==50.0.2
 requests==2.34.0
-urllib3==2.7.0
+urllib3==2.8.0
 # First-run: the setup link is also rendered as a terminal QR (pure python).
 qrcode==8.2
 # Cold-archive encryption (apps/octo/retention/archive_crypto.py): the

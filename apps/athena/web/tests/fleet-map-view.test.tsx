@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 import FleetMapView from "@/components/fleet-map-view";
 import type { BuoyMarker, OctoNode } from "@/components/fleet-map-overlay";
@@ -64,6 +64,19 @@ describe("FleetMapView", () => {
   it("suppresses the banner when every buoy has finite coords", () => {
     render(<FleetMapView octos={[OCTO]} buoys={[WITH_COORDS]} />);
     expect(screen.queryByText(/geo data missing/i)).toBeNull();
+  });
+
+  it("points MapLibre (v6) at the bundled same-origin worker before the first map", () => {
+    // v6 derives its worker URL from `import.meta.url`, which bundling
+    // breaks: without setWorkerUrl the production basemap never loads.
+    render(<FleetMapView octos={[OCTO]} buoys={[WITH_COORDS]} />);
+    const setWorkerUrl = vi.mocked(maplibregl.setWorkerUrl);
+    const MapCtor = vi.mocked(maplibregl.Map);
+    expect(setWorkerUrl).toHaveBeenCalledTimes(1); // once per page lifetime
+    expect(setWorkerUrl).toHaveBeenCalledWith(expect.stringContaining("maplibre-gl-worker"));
+    expect(MapCtor).toHaveBeenCalled();
+    expect(setWorkerUrl.mock.invocationCallOrder[0]!)
+      .toBeLessThan(MapCtor.mock.invocationCallOrder[0]!);
   });
 
   it("passes only buoys with finite coords through to the overlay", () => {

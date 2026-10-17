@@ -2022,9 +2022,22 @@ def _judge(d: Detector, value: str, m: "re.Match[str]", purpose: Purpose,
 
 _BARE_TAIL = re.compile(r"[^\s'\"`<>]*")
 # Format-List: "PathName : <value>", a long value wrapped onto lines indented
-# to the value column.
-_FORMAT_LIST_PROPERTY = re.compile(r"[ \t]*[^\s:][^:\r\n]{0,120}?[ \t]:[ \t]")
+# to the value column. Read in two steps (`_format_list_value_start`): the
+# line's leading blanks, a run that always matches, then a bounded name and
+# its " : ". As one pattern, an unbounded blank run before a part that can
+# fail is quadratic wherever the pattern is searched rather than matched at
+# a line start: each start re-reads the run (CodeQL py/polynomial-redos;
+# 50 kB of tabs took seconds). Each step alone is linear however applied.
+_LEADING_BLANKS = re.compile(r"[ \t]*")
+_FORMAT_LIST_NAME = re.compile(r"[^\s:][^:\r\n]{0,120}?[ \t]:[ \t]")
 _TOKEN = re.compile(r"\S*")
+
+
+def _format_list_value_start(text: str, line_start: int) -> Optional[int]:
+    """Where the value starts on a Format-List property line (``Name : ``,
+    after any indent) that begins at ``line_start``, or None."""
+    m = _FORMAT_LIST_NAME.match(text, _LEADING_BLANKS.match(text, line_start).end())
+    return m.end() if m is not None else None
 
 
 def _value_column(text: str, start: int) -> Optional[int]:
@@ -2032,9 +2045,9 @@ def _value_column(text: str, start: int) -> Optional[int]:
     ``Name : `` prefix, or, on a continuation line (indented to that column),
     the property line a few lines above."""
     line_start = text.rfind("\n", 0, start) + 1
-    m = _FORMAT_LIST_PROPERTY.match(text, line_start)
-    if m is not None and m.end() <= start:
-        return m.end() - line_start
+    end = _format_list_value_start(text, line_start)
+    if end is not None and end <= start:
+        return end - line_start
     head = text[line_start:start]
     indent = len(head) - len(head.lstrip(" "))
     if indent == 0:
@@ -2044,8 +2057,8 @@ def _value_column(text: str, start: int) -> Optional[int]:
         if pos == 0:
             return None
         prev = text.rfind("\n", 0, pos - 1) + 1
-        m = _FORMAT_LIST_PROPERTY.match(text, prev)
-        if m is not None and m.end() - prev == indent:
+        end = _format_list_value_start(text, prev)
+        if end is not None and end - prev == indent:
             return indent
         if not text.startswith(" " * indent, prev):
             return None

@@ -27,7 +27,7 @@ GARBAGE = [
 
 
 def _trusted(raw: str = PROXY_NET):
-    return cip.parse_trusted_proxies(raw)[0]
+    return cip.parse_proxy_setting(raw)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def test_parse_ip_refuses_everything_else_without_raising(value):
 # ---------------------------------------------------------------------------
 
 def test_trusted_proxies_parse_networks_and_addresses():
-    nets, refused = cip.parse_trusted_proxies(
+    nets, refused = cip.parse_proxy_setting(
         " 192.0.2.0/24, 198.51.100.9 ,2001:db8:a::/48,, 192.0.2.0/24")
     assert [str(n) for n in nets] == ["192.0.2.0/24", "198.51.100.9/32", "2001:db8:a::/48"]
     assert refused == ()
@@ -72,13 +72,13 @@ def test_trusted_proxies_parse_networks_and_addresses():
     " ,192.0.2.10 ,, 192.0.2.20, ",
 ])
 def test_entries_are_separated_by_commas_or_whitespace(raw):
-    nets, problems = cip.parse_trusted_proxies(raw)
+    nets, problems = cip.parse_proxy_setting(raw)
     assert [str(n) for n in nets] == ["192.0.2.10/32", "192.0.2.20/32"]
     assert problems == ()
 
 
 def test_trusted_proxies_refuse_garbage_and_trust_everyone():
-    nets, problems = cip.parse_trusted_proxies(
+    nets, problems = cip.parse_proxy_setting(
         "garbage, 0.0.0.0/0, ::/0, 192.0.2.0/33, 192.0.2.0/24")
     assert [str(n) for n in nets] == ["192.0.2.0/24"]
     assert problems == (
@@ -96,7 +96,7 @@ def test_trusted_proxies_refuse_garbage_and_trust_everyone():
     ("2001:db8::5/48", "write 2001:db8::5/128 for that one address, or 2001:db8::/48"),
 ])
 def test_an_entry_with_host_bits_is_refused_never_widened(raw, fix):
-    nets, problems = cip.parse_trusted_proxies(raw)
+    nets, problems = cip.parse_proxy_setting(raw)
     assert nets == ()                       # not the whole subnet, not anything
     assert problems == (f"entry 1 ({raw}) has host bits set: {fix} for the whole network",)
 
@@ -109,18 +109,18 @@ def test_an_entry_with_host_bits_is_refused_never_widened(raw, fix):
 def test_an_ipv4_mapped_entry_is_refused_not_left_to_match_nothing(raw, fix):
     # Peers and chain entries are compared as IPv4, so a mapped network
     # would never match: the setting would quietly trust nobody.
-    nets, problems = cip.parse_trusted_proxies(raw)
+    nets, problems = cip.parse_proxy_setting(raw)
     assert nets == ()
     assert problems == (
         f"entry 1 ({raw}) is an IPv4-mapped IPv6 network, which never matches: write {fix}",)
     # The IPv4 form it names is accepted and matches the mapped peer.
-    nets, problems = cip.parse_trusted_proxies(fix)
+    nets, problems = cip.parse_proxy_setting(fix)
     assert problems == ()
     assert cip.resolve_client_ip("::ffff:192.0.2.10", CLIENT_A, nets) == CLIENT_A
 
 
 def test_an_ipv6_network_that_merely_contains_mapped_space_is_accepted():
-    nets, problems = cip.parse_trusted_proxies("2001:db8::/64, ::/80")
+    nets, problems = cip.parse_proxy_setting("2001:db8::/64, ::/80")
     assert problems == ()
     assert [str(n) for n in nets] == ["2001:db8::/64", "::/80"]
 
@@ -134,7 +134,7 @@ def test_an_ipv6_network_that_merely_contains_mapped_space_is_accepted():
     "x" * 300,
 ])
 def test_an_entry_that_is_not_an_address_is_named_by_position_only(raw):
-    nets, problems = cip.parse_trusted_proxies(f"192.0.2.10, {raw}")
+    nets, problems = cip.parse_proxy_setting(f"192.0.2.10, {raw}")
     assert [str(n) for n in nets] == ["192.0.2.10/32"]
     assert len(problems) == 1
     assert problems[0].startswith("entry 2 is not an IP address or network")
@@ -143,10 +143,10 @@ def test_an_entry_that_is_not_an_address_is_named_by_position_only(raw):
         assert "separate entries with commas or spaces" in problems[0]
 
 
-def test_check_trusted_proxies_refuses_any_unusable_entry(monkeypatch):
+def test_check_proxy_setting_refuses_any_unusable_entry(monkeypatch):
     monkeypatch.setenv("OCTO_TRUSTED_PROXIES", "192.0.2.10, s3cr3t-Value, 192.0.2.0/0")
     with pytest.raises(cip.TrustedProxiesError) as exc:
-        cip.check_trusted_proxies()
+        cip.check_proxy_setting()
     message = str(exc.value)
     assert message.startswith("OCTO_TRUSTED_PROXIES is not valid, so octo-core will not start")
     assert "entry 2 is not an IP address or network" in message
@@ -155,17 +155,84 @@ def test_check_trusted_proxies_refuses_any_unusable_entry(monkeypatch):
     assert "separated by commas or spaces" in message
     for ok in ("", "  ", "192.0.2.0/28", "192.0.2.10 192.0.2.20", "2001:db8::/64"):
         monkeypatch.setenv("OCTO_TRUSTED_PROXIES", ok)
-        assert cip.check_trusted_proxies() == cip.trusted_proxies()
+        assert cip.check_proxy_setting() == cip.trusted_proxies()
     monkeypatch.delenv("OCTO_TRUSTED_PROXIES")
-    assert cip.check_trusted_proxies() == ()
+    assert cip.check_proxy_setting() == ()
 
 
 def test_the_runtime_warning_names_positions_not_values(monkeypatch, caplog):
+    monkeypatch.setattr(cip, "_warned_settings", set())
     monkeypatch.setenv("OCTO_TRUSTED_PROXIES", "192.0.2.10, s3cr3t-Runtime-Value")
     with caplog.at_level("WARNING", logger=cip.__name__):
         assert cip.trusted_proxies() == (ipaddress.ip_network("192.0.2.10/32"),)
-    assert "entry 2 is not an IP address or network" in caplog.text
-    assert "s3cr3t" not in caplog.text
+        assert cip.trusted_proxies() == (ipaddress.ip_network("192.0.2.10/32"),)
+    assert [r.getMessage() for r in caplog.records] == [
+        "OCTO_TRUSTED_PROXIES: ignoring 1 unusable entry (position 2); octo-core "
+        "refuses this value at start and says why"]
+    caplog.clear()
+    # Not even an entry that parses (the startup error quotes those) is logged.
+    monkeypatch.setenv("OCTO_TRUSTED_PROXIES", "s3cr3t-A 192.0.2.10/16 192.0.2.0/28 0.0.0.0/0")
+    with caplog.at_level("WARNING", logger=cip.__name__):
+        assert cip.trusted_proxies() == (ipaddress.ip_network("192.0.2.0/28"),)
+    assert [r.getMessage() for r in caplog.records] == [
+        "OCTO_TRUSTED_PROXIES: ignoring 3 unusable entries (positions 1, 2, 4); "
+        "octo-core refuses this value at start and says why"]
+    assert "s3cr3t" not in caplog.text and "/16" not in caplog.text and "0.0.0.0" not in caplog.text
+
+
+def test_log_lines_name_the_setting_octo_core_reads():
+    """client_ip.SETTING_NAME (what log lines and the startup error print)
+    is spelled out; it must stay the variable the setting is read from."""
+    from apps.octo.auth.config import TRUSTED_PROXIES_ENV
+
+    assert cip.SETTING_NAME == TRUSTED_PROXIES_ENV
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("203.0.113.5", "203.0.113.5"),
+    ("::ffff:192.0.2.20", "192.0.2.20"),
+    ("2001:db8:1:2::/64", "2001:db8:1:2::/64"),            # an IPv6 limiter bucket
+    (ipaddress.ip_address("2001:db8::5"), "2001:db8::5"),
+])
+def test_loggable_prints_parsed_addresses_and_networks(value, expected):
+    assert cip.loggable(value) == expected
+
+
+@pytest.mark.parametrize("value", GARBAGE + [
+    None, "testclient", "/run/octo.sock", "evil\nINFO forged line", "\x1b[2Jx",
+    "2001:db8::/64\nforged", "2001:db8::1/64", "fe80::%eth0/64", "x" * 500 + "/64",
+])
+def test_loggable_never_prints_a_label_that_is_not_an_address(value):
+    assert cip.loggable(value) == cip.NOT_AN_ADDRESS
+
+
+def test_the_untrusted_peer_note_names_only_a_parsed_address(monkeypatch, caplog):
+    """A peer label that is not an address (an ASGI server's own proxy-header
+    handling can put header text there) is bucketed as before but never
+    printed; an address peer is printed as parsed."""
+    monkeypatch.setenv("OCTO_TRUSTED_PROXIES", PROXY_NET)
+    monkeypatch.setattr(cip, "_warned_peers", set())
+    forged = "evil\nINFO forged line"
+    with caplog.at_level("WARNING", logger=cip.__name__):
+        assert cip.client_ip(_request(forged, [CLIENT_A])) == forged
+        assert cip.client_ip(_request(f"::ffff:{DIRECT}", [CLIENT_A])) == DIRECT
+    messages = [r.getMessage() for r in caplog.records]
+    assert messages == [
+        f"X-Forwarded-For from {cip.NOT_AN_ADDRESS} ignored: the peer is not in "
+        "OCTO_TRUSTED_PROXIES (a direct caller naming an address, or a proxy "
+        "missing from the setting)",
+        f"X-Forwarded-For from {DIRECT} ignored: the peer is not in "
+        "OCTO_TRUSTED_PROXIES (a direct caller naming an address, or a proxy "
+        "missing from the setting)",
+    ]
+    assert "evil" not in caplog.text and "forged" not in caplog.text
+    caplog.clear()
+    monkeypatch.delenv("OCTO_TRUSTED_PROXIES")
+    with caplog.at_level("WARNING", logger=cip.__name__):
+        cip.client_ip(_request(DIRECT, [CLIENT_A]))
+    (message,) = [r.getMessage() for r in caplog.records]
+    assert message.startswith(f"X-Forwarded-For from {DIRECT} not believed: "
+                              "OCTO_TRUSTED_PROXIES is empty")
 
 
 def test_unset_or_empty_setting_trusts_nobody(monkeypatch):
@@ -318,7 +385,7 @@ def test_a_public_client_named_by_a_trusted_proxy_is_not_logged(monkeypatch, cap
 
 
 def test_client_ip_with_a_garbage_setting_trusts_only_the_valid_part(monkeypatch):
-    """Startup refuses such a value (check_trusted_proxies); if the
+    """Startup refuses such a value (check_proxy_setting); if the
     environment changed under a running process anyway, an unusable entry
     means fewer trusted proxies, never more."""
     monkeypatch.setenv("OCTO_TRUSTED_PROXIES", "not-a-network, 0.0.0.0/0")

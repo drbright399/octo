@@ -653,7 +653,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             logger.warning(
                 "failed-auth limit: %d failed credentials from %s within %ds; "
                 "its credential attempts get 429 for %ds",
-                failures.limit, address, int(failures.window_sec),
+                failures.limit, client_ip_mod.loggable(address), int(failures.window_sec),
                 int(failures.cooldown_sec),
             )
         if (not failed and credential is not None and 200 <= status < 300
@@ -719,19 +719,22 @@ def reset_limiter() -> None:
     _SHARED_LIMITER = RateLimiter()
 
 
-def _startup_line(trusted: tuple, failures: Optional[AuthFailureLimiter]) -> str:
+def _startup_line(proxy_networks: tuple, failures: Optional[AuthFailureLimiter]) -> str:
     """The one line that states the client-address trust setting at start.
-    Names the trusted networks (addresses, never anything else) so an
-    operator can check from `docker logs` what the running process uses."""
-    env = client_ip_mod.TRUSTED_PROXIES_ENV
-    if not trusted:
+    Names the trusted networks (parsed networks, never anything else) so an
+    operator can check from `docker logs` what the running process uses.
+    Built from the setting's name (a literal), the parsed networks and the
+    limiter's numbers only (see `client_ip.SETTING_NAME` for why no name
+    with "trusted" in it feeds a log line)."""
+    env = client_ip_mod.SETTING_NAME
+    if not proxy_networks:
         return (
             f"client addresses: {env} is empty: X-Forwarded-For is believed from "
             "nobody, the socket peer is the client address, and the failed-auth "
             "limiter is off. Behind a reverse proxy set it "
             "(docs/operations/bundle.md, \"Client addresses behind the proxy\")"
         )
-    networks = ", ".join(str(n) for n in trusted)
+    listed = ", ".join(str(network) for network in proxy_networks)
     if failures is None:
         limiter = f"failed-auth limiter off ({ENV_AUTH_FAILURE_LIMIT}=0)"
     else:
@@ -742,7 +745,7 @@ def _startup_line(trusted: tuple, failures: Optional[AuthFailureLimiter]) -> str
         )
     return (
         f"client addresses: X-Forwarded-For believed only from {env} = "
-        f"{networks} ({len(trusted)} network{'s' if len(trusted) != 1 else ''}); "
+        f"{listed} ({len(proxy_networks)} network{'s' if len(proxy_networks) != 1 else ''}); "
         f"{limiter}"
     )
 
@@ -754,8 +757,8 @@ def install_rate_limit_middleware(app: FastAPI) -> None:
     default logging shows WARNING and above from the application's loggers
     (Python's last-resort handler, stderr), never INFO, and the deploy
     guide's check reads that line from `docker logs`."""
-    trusted = client_ip_mod.check_trusted_proxies()
+    proxy_networks = client_ip_mod.check_proxy_setting()
     failures = AuthFailureLimiter.from_env()
-    logger.warning("%s", _startup_line(trusted, failures))
+    logger.warning("%s", _startup_line(proxy_networks, failures))
     app.state.auth_failure_limiter = failures
     app.add_middleware(RateLimitMiddleware, limiter=get_limiter(), failures=failures)
